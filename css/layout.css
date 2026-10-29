@@ -1,0 +1,322 @@
+/* ==========================================================================
+   APP LAYOUT & RESPONSIVE SHELL
+   ========================================================================== */
+
+#app-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  position: relative;
+  z-index: 2;
+}
+
+/* --------------------------------------------------------------------------
+   Cabeçalho Superior (Header)
+   -------------------------------------------------------------------------- */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  background: var(--bg-card);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-bottom: 1px solid var(--border-card);
+  padding-top: env(safe-area-inset-top);
+  transition: border-color var(--duration-fast) ease;
+}
+
+.header-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  height: 64px;
+  padding: 0 var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  color: var(--text-main);
+}
+.brand:hover {
+  text-decoration: none;
+}
+
+.brand-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 12px var(--accent-glow);
+  color: #fff;
+  font-weight: 800;
+  font-size: var(--text-sm);
+}
+
+.brand-title {
+  font-size: var(--text-md);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.brand-badge {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-xs);
+}
+
+/* Navegação Desktop (visível apenas em telas médias/grandes) */
+.desktop-nav {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.desktop-nav .nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: all var(--duration-fast) ease;
+}
+
+.desktop-nav .nav-link:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.desktop-nav .nav-link.is-active {
+  color: var(--accent-primary);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Rate limit pill no cabeçalho */
+.rate-limit-pill {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rate-limit-pill.is-warning {
+  border-color: rgba(245, 158, 11, 0.4);
+  color: var(--color-warning);
+}
+
+.rate-limit-pill.is-danger {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: var(--color-danger);
+}
+
+/* --------------------------------------------------------------------------
+   Container Principal (View Container)
+   -------------------------------------------------------------------------- */
+.main-content {
+  flex: 1;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-4);
+  padding-bottom: calc(80px + env(safe-area-inset-bottom)); /* Espaço para Dock Mobile */
+}
+
+/* --------------------------------------------------------------------------
+   Dock / Barra Inferior Mobile
+   -------------------------------------------------------------------------- */
+.mobile-dock {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-dock);
+  background: var(--bg-card);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-top: 1px solid var(--border-card);
+  padding-bottom: env(safe-area-inset-bottom);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  height: calc(60px + env(safe-area-inset-bottom));
+}
+
+.dock-item {
+  flex: 1;
+  height: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  transition: all var(--duration-fast) ease;
+  min-width: 44px; /* Touch target */
+}
+
+.dock-item:hover, .dock-item:focus-visible {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.dock-item.is-active {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.dock-icon {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --------------------------------------------------------------------------
+   Ajustes para Desktop (≥ 768px)
+   -------------------------------------------------------------------------- */
+@media (min-width: 768px) {
+  .desktop-nav {
+    display: flex;
+  }
+  .mobile-dock {
+    display: none;
+  }
+  .main-content {
+    padding: var(--space-6);
+    padding-bottom: var(--space-10);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Fase 2: Badges da Inbox, Botão Command Palette e Botão Flutuante (FAB)
+   -------------------------------------------------------------------------- */
+.nav-inbox-badge,
+.dock-inbox-badge {
+  background: var(--accent-primary);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.dock-inbox-badge {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+}
+
+.palette-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.palette-trigger-kbd {
+  display: none;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 1px 5px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.shortcuts-help-btn {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .palette-trigger-kbd {
+    display: inline-block;
+  }
+  .shortcuts-help-btn {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 420px) {
+  .palette-trigger-label {
+    display: none;
+  }
+}
+
+/* Botão Flutuante (FAB) da Inbox Rápida */
+.inbox-fab {
+  position: fixed;
+  right: var(--space-4);
+  bottom: calc(74px + env(safe-area-inset-bottom));
+  z-index: calc(var(--z-dock) + 5);
+  height: 48px;
+  padding: 0 16px;
+  border-radius: var(--radius-full);
+  background: var(--accent-gradient);
+  color: #fff;
+  border: none;
+  box-shadow: var(--shadow-lg), 0 0 20px var(--accent-glow);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-smooth), filter var(--duration-fast) ease;
+}
+
+.inbox-fab:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.inbox-fab:active {
+  transform: scale(0.96);
+}
+
+@media (min-width: 768px) {
+  .inbox-fab {
+    bottom: var(--space-6);
+    right: var(--space-6);
+  }
+}

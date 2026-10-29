@@ -1,0 +1,1151 @@
+/* ==========================================================================
+   VIEW STYLES (HOME, PROJECT DETAILS, SETTINGS)
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Home View
+   -------------------------------------------------------------------------- */
+.home-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.home-hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.home-title {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: linear-gradient(180deg, var(--text-main) 30%, var(--text-secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.home-subtitle {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+}
+
+/* Bento de Indicadores */
+.bento-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+}
+
+@media (min-width: 768px) {
+  .bento-stats {
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-4);
+  }
+}
+
+.stat-card {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.stat-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat-value {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--text-main);
+  line-height: 1;
+}
+
+/* Toolbar de Filtros e Busca */
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@media (min-width: 768px) {
+  .toolbar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.search-box {
+  position: relative;
+  flex: 1;
+}
+
+.search-input {
+  padding-left: 2.5rem;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.filters-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.filters-group .select {
+  width: auto;
+  min-width: 130px;
+}
+
+/* Grid de Projetos */
+.projects-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+@media (min-width: 640px) {
+  .projects-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .projects-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-5);
+  }
+}
+
+/* Card do Projeto */
+.project-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+
+.project-card:hover {
+  text-decoration: none;
+}
+
+.project-cover-canvas {
+  width: 100%;
+  height: 110px;
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+}
+
+.project-cover-badge {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 2;
+}
+
+.project-card-body {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: var(--space-3);
+}
+
+.project-card-title {
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-card-desc {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: var(--leading-normal);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.8em;
+}
+
+.project-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.meta-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.meta-lang-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background-color: var(--accent-primary);
+}
+
+.meta-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.project-card-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* --------------------------------------------------------------------------
+   2. Project Detail View
+   -------------------------------------------------------------------------- */
+.project-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.project-back-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  width: fit-content;
+}
+
+.project-hero {
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+}
+
+.project-hero-cover {
+  width: 100%;
+  height: 160px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+
+@media (min-width: 768px) {
+  .project-hero-cover {
+    height: 200px;
+  }
+}
+
+.project-hero-content {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.project-hero-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@media (min-width: 768px) {
+  .project-hero-header {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+}
+
+.project-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.project-status-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.project-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* Layout em 2 colunas para Tarefas e Notas */
+.project-split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
+}
+
+@media (min-width: 900px) {
+  .project-split {
+    grid-template-columns: 1.1fr 0.9fr;
+  }
+}
+
+/* Seção de Tarefas */
+.tasks-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.task-input-bar {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.task-item {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  transition: all var(--duration-fast) ease;
+}
+
+.task-item.is-completed .task-title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.task-checkbox {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.task-title-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.task-title {
+  font-size: var(--text-sm);
+  color: var(--text-main);
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.task-priority-pill {
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.priority-baixa { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
+.priority-normal { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+.priority-alta { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+.priority-urgente { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+
+.task-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Seção de Notas */
+.notes-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.notes-status-indicator {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notes-editor-tabs {
+  display: flex;
+  gap: var(--space-2);
+  background: var(--bg-surface);
+  padding: 3px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  width: fit-content;
+}
+
+.notes-tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notes-tab-btn.is-active {
+  background: var(--bg-card);
+  color: var(--text-main);
+  box-shadow: var(--shadow-sm);
+}
+
+.markdown-preview {
+  min-height: 200px;
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  line-height: var(--leading-relaxed);
+  overflow-y: auto;
+}
+
+.markdown-preview h1, .markdown-preview h2, .markdown-preview h3 {
+  margin-top: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.markdown-preview p {
+  margin-bottom: var(--space-3);
+}
+
+.markdown-preview ul, .markdown-preview ol {
+  margin-left: var(--space-5);
+  margin-bottom: var(--space-3);
+}
+
+.markdown-preview code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.15rem 0.35rem;
+  border-radius: var(--radius-xs);
+}
+
+.markdown-preview pre {
+  background: rgba(0, 0, 0, 0.4);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  margin-bottom: var(--space-3);
+}
+
+/* Commits Recentes */
+.commits-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.commit-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.commit-sha {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--accent-primary);
+  background: var(--accent-soft);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+}
+
+.commit-msg {
+  font-size: var(--text-sm);
+  color: var(--text-main);
+  flex: 1;
+}
+
+.commit-date {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* --------------------------------------------------------------------------
+   3. Settings View
+   -------------------------------------------------------------------------- */
+.settings-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 800px;
+}
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+
+@media (min-width: 600px) {
+  .palette-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+.palette-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 2px solid transparent;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  transition: all var(--duration-fast) ease;
+}
+
+.palette-btn.is-active {
+  border-color: var(--text-main);
+  color: var(--text-main);
+}
+
+.palette-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+}
+
+/* ==========================================================================
+   FASE 2: HOME EXPANDIDA, ABAS DE PROJETO, SUBTAREFAS, TIMELINE E KANBAN
+   ========================================================================== */
+
+/* ── Home Highlights ("Continue de onde parou" + "Em foco" + Alerta Vencidas) ── */
+.home-highlights {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.overdue-alert-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f87171;
+  font-size: var(--text-sm);
+  flex-wrap: wrap;
+}
+
+.home-focus-split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+@media (min-width: 860px) {
+  .home-focus-split {
+    grid-template-columns: 1fr 1.2fr;
+  }
+}
+
+.continue-card,
+.focus-tasks-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.section-eyebrow {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-primary);
+}
+
+.focus-tasks-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.focus-task-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+/* ── Home Toolbar Expandida & Alternador Grid / Lista / Kanban ── */
+.home-toolbar-expanded {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.view-mode-switch {
+  display: inline-flex;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  gap: 2px;
+}
+
+.view-mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.view-mode-btn.is-active {
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+.projects-list-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.project-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  cursor: pointer;
+  flex-wrap: wrap;
+}
+
+.project-list-row:hover {
+  border-color: var(--border-highlight);
+}
+
+.card-pin-btn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  opacity: 0.7;
+  transition: opacity var(--duration-fast) ease, transform var(--duration-fast) ease;
+}
+
+.card-pin-btn.is-pinned,
+.card-pin-btn:hover {
+  opacity: 1;
+  transform: scale(1.08);
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.hero-overlay-btn {
+  background: rgba(0, 0, 0, 0.55) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  font-size: 11px !important;
+  min-height: 32px !important;
+  padding: 0 10px !important;
+}
+
+.hero-overlay-btn.is-active-chip {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* ── Abas da Página de Projeto com Indicador Deslizante ── */
+.project-tabs-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border-card);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.project-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.project-tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: 12px 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  min-height: 44px;
+  transition: color var(--duration-fast) ease;
+}
+
+.project-tab-btn:hover {
+  color: var(--text-main);
+}
+
+.project-tab-btn.is-active {
+  color: var(--accent-primary);
+}
+
+.tab-badge {
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  font-weight: 700;
+}
+
+.project-tab-indicator {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: var(--accent-gradient);
+  border-radius: 3px 3px 0 0;
+  transition: transform var(--duration-normal) var(--ease-smooth),
+              width var(--duration-normal) var(--ease-smooth);
+  pointer-events: none;
+}
+
+/* ── Tarefas Avançadas, Subtarefas, Recorrência e Drag ── */
+.task-item-wrapper {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: border-color var(--duration-fast) ease, opacity var(--duration-fast) ease;
+}
+
+.task-item-wrapper .task-item {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+}
+
+.task-item-wrapper.is-dragging {
+  opacity: 0.55;
+  border-color: var(--accent-primary);
+}
+
+.task-item-wrapper.drag-over {
+  border-top: 2px solid var(--accent-primary);
+}
+
+.task-drag-handle {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: grab;
+  font-size: 16px;
+  padding: 4px;
+  line-height: 1;
+  touch-action: none;
+}
+
+.task-drag-handle:active {
+  cursor: grabbing;
+}
+
+.task-due-badge {
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.task-due-badge.is-overdue {
+  background: rgba(239, 68, 68, 0.16);
+  color: #f87171;
+  font-weight: 700;
+}
+
+.task-due-badge.is-due-soon {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.task-recurrence-badge {
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.task-subtasks-toggle {
+  background: transparent;
+  border: none;
+  color: var(--accent-primary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.task-subtasks-toggle:hover {
+  text-decoration: underline;
+}
+
+.subtasks-panel {
+  padding: 8px 14px 12px 42px;
+  border-top: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.subtasks-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.subtask-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.subtask-item.is-completed .subtask-title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.subtask-title {
+  flex: 1;
+}
+
+/* ── Grid de Atividade (Commits, PRs, Issues) ── */
+.activity-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+@media (min-width: 960px) {
+  .activity-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ── Timeline (Remoto vs Pessoal) ── */
+.timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  position: relative;
+}
+
+.timeline-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+}
+
+.timeline-item.origin-local {
+  border-left: 3px solid var(--accent-primary);
+}
+
+.timeline-item.origin-remote {
+  border-left: 3px solid #06b6d4;
+}
+
+.timeline-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.timeline-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.timeline-origin-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+}
+
+.timeline-origin-local {
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+}
+
+.timeline-origin-remote {
+  background: rgba(6, 182, 212, 0.14);
+  color: #06b6d4;
+}
+
+.timeline-time {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.timeline-title {
+  font-size: var(--text-sm);
+  color: var(--text-main);
+  font-weight: 500;
+  word-break: break-word;
+}
+
+/* ── Quadro Kanban (#/kanban) ── */
+.kanban-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.kanban-mobile-selector {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.kanban-board {
+  display: flex;
+  gap: var(--space-4);
+  overflow-x: auto;
+  padding-bottom: var(--space-4);
+  scroll-snap-type: x mandatory;
+  align-items: flex-start;
+}
+
+.kanban-column {
+  flex: 0 0 285px;
+  min-width: 285px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  scroll-snap-align: start;
+  transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+
+@media (min-width: 1200px) {
+  .kanban-column {
+    flex: 1 1 220px;
+    min-width: 220px;
+  }
+}
+
+.kanban-column.is-drop-target {
+  border-color: var(--accent-primary);
+  background: var(--accent-soft);
+}
+
+.kanban-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.kanban-col-count {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.kanban-column-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 120px;
+}
+
+.kanban-empty-slot {
+  border: 1px dashed var(--border-highlight);
+  border-radius: var(--radius-md);
+  padding: var(--space-5) var(--space-3);
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.kanban-card {
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kanban-card.is-dragging {
+  opacity: 0.5;
+  border-color: var(--accent-primary);
+}
+
+.kanban-card-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-main);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kanban-card-title:hover {
+  color: var(--accent-primary);
+  text-decoration: none;
+}
+
+.kanban-drag-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 2px 6px;
+  user-select: none;
+  touch-action: none;
+}
+
+.kanban-card-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.kanban-step-btn {
+  min-height: 32px !important;
+  padding: 0 8px !important;
+}
+
+.kanban-move-select {
+  min-height: 32px !important;
+  padding: 2px 6px !important;
+  font-size: var(--text-xs) !important;
+  flex: 1;
+}

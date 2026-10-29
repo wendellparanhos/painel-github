@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark" data-accent="violet" data-fx="completo">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Painel pessoal de projetos e repositórios do GitHub — wendellparanhos">
+  <meta name="color-scheme" content="dark light">
+
+  <!-- Pré-carregamento de fonte -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+    media="print"
+    onload="this.media='all'"
+  >
+  <!-- Fonte fallback síncrona enquanto carrega -->
+  <noscript>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+  </noscript>
+
+  <title>Painel — wendellparanhos</title>
+
+  <!-- Favicon emoji simples -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+
+  <!-- CSS — ordem importa: tokens → base → components → layout → views -->
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/views.css">
+
+  <!-- Estilos adicionais in-line mínimos: utilitários e markdown extras -->
+  <style>
+    /* Utilitários de texto */
+    .text-muted { color: var(--text-muted); }
+    .text-secondary { color: var(--text-secondary); }
+
+    /* Blockquote do Markdown */
+    .markdown-quote {
+      border-left: 3px solid var(--accent-primary);
+      padding: 0.5rem 1rem;
+      margin: 0.75rem 0;
+      background: var(--accent-soft);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      color: var(--text-secondary);
+    }
+
+    /* Task list do Markdown */
+    .task-list {
+      list-style: none;
+      padding: 0;
+      margin-left: 0;
+    }
+
+    .task-list-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .task-list-check {
+      margin-top: 3px;
+      flex-shrink: 0;
+      accent-color: var(--accent-primary);
+    }
+
+    /* Animação de entrada de view */
+    @keyframes viewFadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .home-view,
+    .project-view,
+    .kanban-view,
+    .inbox-view,
+    .settings-view {
+      animation: viewFadeIn 280ms var(--ease-smooth) both;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .home-view,
+      .project-view,
+      .kanban-view,
+      .inbox-view,
+      .settings-view {
+        animation: none;
+      }
+    }
+
+    /* Loading inicial mínimo enquanto JS carrega */
+    #initial-loader {
+      position: fixed;
+      inset: 0;
+      background: #07070b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 300ms ease;
+    }
+
+    #initial-loader.is-hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .loader-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #8b5cf6;
+      animation: loaderPulse 1.2s ease-in-out infinite;
+    }
+
+    .loader-dot:nth-child(2) { animation-delay: 0.2s; }
+    .loader-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes loaderPulse {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+
+    /* Skip to main content — acessibilidade */
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: 16px;
+      z-index: 9999;
+      background: var(--accent-primary);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 0 0 var(--radius-md) var(--radius-md);
+      font-weight: 700;
+      font-size: var(--text-sm);
+      text-decoration: none;
+      transition: top 200ms ease;
+    }
+
+    .skip-link:focus {
+      top: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Acessibilidade: pular para o conteúdo principal -->
+  <a href="#main-content" class="skip-link">Pular para o conteúdo</a>
+
+  <!-- Loader inicial enquanto JS carrega (remove-se assim que o app inicializa) -->
+  <div id="initial-loader" aria-hidden="true">
+    <div style="display:flex;gap:10px;align-items:center;">
+      <div class="loader-dot"></div>
+      <div class="loader-dot"></div>
+      <div class="loader-dot"></div>
+    </div>
+  </div>
+
+  <!-- Shell da aplicação — preenchido pelo JS -->
+  <div id="app-root"></div>
+
+  <!-- Bootstrap da aplicação (ES Module) -->
+  <script type="module" src="js/app.js"></script>
+
+  <!-- Remove o loader assim que o DOM estiver pronto -->
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      // Aguarda um frame para o módulo ter tempo de iniciar
+      setTimeout(() => {
+        const loader = document.getElementById('initial-loader');
+        if (loader) {
+          loader.classList.add('is-hidden');
+          setTimeout(() => loader.remove(), 400);
+        }
+      }, 300);
+    });
+  </script>
+</body>
+</html>
