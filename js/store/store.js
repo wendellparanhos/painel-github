@@ -9,10 +9,130 @@
  *   canUndo()         → boolean
  */
 
-import { loadState, saveState, saveStateImmediate, CURRENT_VERSION } from './storage.js';
+import { loadState, saveState, saveStateImmediate, createInitialState, CURRENT_VERSION } from './storage.js';
 import { generateUUID } from '../utils/uuid.js';
 import { invalidateCoverCache } from '../utils/cover.js';
-import { buildNextRecurringTask } from '../utils/domain.js';
+import {
+  buildNextRecurringTask,
+  getTodayLocalISO,
+  XP_REWARDS,
+  computeLevelInfo,
+  evaluateStreakOnActivity,
+  evaluateAchievements,
+  ACHIEVEMENTS_CATALOG
+} from '../utils/domain.js';
+
+// ─────────────────────────────────────────────
+// MÁQUINA DE ESTADOS EXPLÍCITA DO TIMER DE FOCO (FASE 4)
+// Estados: 'idle' | 'running' | 'paused' | 'completed' | 'interrupted'
+// ─────────────────────────────────────────────
+export const FOCUS_ALLOWED_TRANSITIONS = Object.freeze({
+  idle: ['running'],
+  running: ['paused', 'completed', 'interrupted', 'idle'],
+  paused: ['running', 'interrupted', 'idle'],
+  interrupted: ['running', 'completed', 'idle'],
+  completed: ['idle', 'running']
+});
+
+export function canTransitionFocusTimer(fromStatus, toStatus) {
+  const allowed = FOCUS_ALLOWED_TRANSITIONS[fromStatus];
+  return Array.isArray(allowed) && allowed.includes(toStatus);
+}
+
+function _emitSafeEvent(name, detail) {
+  if (typeof document !== 'undefined' && typeof CustomEvent === 'function') {
+    setTimeout(() => {
+      try {
+        document.dispatchEvent(new CustomEvent(name, { detail, bubbles: true }));
+      } catch {
+        // Silencioso em ambientes de teste sem DOM completo
+      }
+    }, 0);
+  }
+}
+
+/**
+ * Concede XP, atualiza streak e desbloqueia conquistas de forma 100% IDEMPOTENTE.
+ * Se `grantKey` já estiver registrado em `state.gamification.xpGrants`, não concede XP novamente.
+ */
+function _applyGamificationGrant(state, { grantKey, xpAmount, reason, activityDateISO }) {
+  const gamification = state.gamification || createInitialState().gamification;
+  const xpGrants = { ...(gamification.xpGrants || {}) };
+  const dateISO = activityDateISO || getTodayLocalISO();
+
+  const alreadyGranted = Boolean(xpGrants[grantKey]);
+  const prevXp = Math.max(0, Number(gamification.xp) || 0);
+  const prevLevelInfo = computeLevelInfo(prevXp);
+
+  let nextXp = prevXp;
+  if (!alreadyGranted && xpAmount > 0) {
+    nextXp = prevXp + xpAmount;
+    xpGrants[grantKey] = {
+      xp: xpAmount,
+      reason,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  const nextLevelInfo = computeLevelInfo(nextXp);
+  const nextStreak = evaluateStreakOnActivity(gamification.streak, dateISO);
+
+  const tempState = {
+    ...state,
+    gamification: {
+      ...gamification,
+      xp: nextXp,
+      level: nextLevelInfo.level,
+      xpGrants,
+      streak: nextStreak
+    }
+  };
+
+  const achResult = evaluateAchievements(tempState);
+  const unlockedAchievements = { ...(gamification.unlockedAchievements || {}) };
+  const nowISO = new Date().toISOString();
+  const newlyUnlockedObjects = [];
+
+  for (const badgeId of achResult.newlyUnlockedIds) {
+    unlockedAchievements[badgeId] = nowISO;
+    const found = ACHIEVEMENTS_CATALOG.find(b => b.id === badgeId);
+    if (found) newlyUnlockedObjects.push(found);
+  }
+
+  const nextState = {
+    ...tempState,
+    gamification: {
+      ...tempState.gamification,
+      unlockedAchievements
+    }
+  };
+
+  if (state.config?.gamificationEnabled !== false) {
+    if (!alreadyGranted && xpAmount > 0) {
+      _emitSafeEvent('gamification:xp-gained', {
+        xpAdded: xpAmount,
+        totalXp: nextXp,
+        level: nextLevelInfo.level,
+        reason,
+        grantKey
+      });
+      if (nextLevelInfo.level > prevLevelInfo.level) {
+        _emitSafeEvent('gamification:level-up', {
+          oldLevel: prevLevelInfo.level,
+          newLevel: nextLevelInfo.level,
+          levelInfo: nextLevelInfo
+        });
+      }
+    }
+    if (newlyUnlockedObjects.length > 0) {
+      _emitSafeEvent('gamification:achievement-unlocked', {
+        achievements: newlyUnlockedObjects
+      });
+    }
+  }
+
+  return nextState;
+}
 
 // ─────────────────────────────────────────────
 // ESTADO INTERNO
@@ -310,10 +430,29 @@ function reducer(state, action) {
         { status, timestamp: new Date().toISOString() }
       ].slice(-MAX_STATUS_HISTORY);
 
-      return {
+      let nextState = {
         ...state,
         projects: { ...state.projects, [id]: proj }
       };
+
+      if (status === 'concluído') {
+        const grantKey = `project:${id}`;
+        const firstTime = !state.gamification?.xpGrants?.[grantKey];
+        nextState = _applyGamificationGrant(nextState, {
+          grantKey,
+          xpAmount: XP_REWARDS.PROJECT_COMPLETE,
+          reason: `Projeto concluído: ${proj.customName || proj.name || id}`
+        });
+        if (state.config?.gamificationEnabled !== false) {
+          _emitSafeEvent('project:completed-celebration', {
+            repoId: id,
+            projectName: proj.customName || proj.name || `Projeto #${id}`,
+            firstTime
+          });
+        }
+      }
+
+      return nextState;
     }
 
     case 'PROJECT_UPDATE_COVER_SEED': {
@@ -424,9 +563,22 @@ function reducer(state, action) {
       return {
         ...state,
         githubCache: {
-          repos: action.payload.repos,
-          fetchedAt: action.payload.fetchedAt,
-          rateLimit: action.payload.rateLimit || null
+          ...state.githubCache,
+          repos: action.payload.repos ?? state.githubCache.repos ?? [],
+          fetchedAt: action.payload.fetchedAt ?? state.githubCache.fetchedAt ?? null,
+          rateLimit: action.payload.rateLimit || state.githubCache.rateLimit || null
+        }
+      };
+    }
+
+    case 'GITHUB_EVENTS_CACHE_UPDATE': {
+      return {
+        ...state,
+        githubCache: {
+          ...state.githubCache,
+          events: Array.isArray(action.payload.events) ? action.payload.events : (state.githubCache.events || []),
+          eventsFetchedAt: action.payload.fetchedAt ?? state.githubCache.eventsFetchedAt ?? null,
+          rateLimit: action.payload.rateLimit || state.githubCache.rateLimit || null
         }
       };
     }
@@ -492,10 +644,20 @@ function reducer(state, action) {
         delete task.completedAt;
       }
 
-      return {
+      let nextState = {
         ...state,
         projects: { ...state.projects, [id]: proj }
       };
+
+      if (task.completed) {
+        nextState = _applyGamificationGrant(nextState, {
+          grantKey: `task:${task.id}`,
+          xpAmount: XP_REWARDS.TASK_COMPLETE,
+          reason: `Tarefa concluída: ${task.title}`
+        });
+      }
+
+      return nextState;
     }
 
     case 'TASK_UPDATE': {
@@ -749,6 +911,386 @@ function reducer(state, action) {
       };
     }
 
+    // ── Modo Foco / Pomodoro (Máquina de Estados Explícita) ──
+    case 'FOCUS_SET_TARGET': {
+      const { repoId = null, taskId = null } = action.payload || {};
+      const focus = state.focus || createInitialState().focus;
+      return {
+        ...state,
+        focus: {
+          ...focus,
+          timer: {
+            ...focus.timer,
+            repoId: repoId ? String(repoId) : null,
+            taskId: taskId ? String(taskId) : null
+          }
+        }
+      };
+    }
+
+    case 'FOCUS_CONFIGURE_MODE': {
+      const { mode = 'focus', customMinutes } = action.payload || {};
+      const focus = state.focus || createInitialState().focus;
+      const timer = focus.timer || {};
+      // Só permite reconfigurar modo quando não está running
+      if (timer.status === 'running') return state;
+
+      const defaultMins = mode === 'shortBreak'
+        ? (state.config?.shortBreakMinutes || 5)
+        : mode === 'longBreak'
+          ? (state.config?.longBreakMinutes || 15)
+          : (state.config?.focusDurationMinutes || 25);
+
+      const mins = Math.max(1, Math.min(180, Number(customMinutes) || defaultMins));
+      const durationMs = mins * 60 * 1000;
+
+      return {
+        ...state,
+        focus: {
+          ...focus,
+          timer: {
+            ...timer,
+            status: 'idle',
+            mode,
+            durationMs,
+            startedAt: null,
+            expectedEndAt: null,
+            remainingMs: durationMs,
+            lastClockCheckAt: null,
+            sessionId: null,
+            ambiguousReason: null
+          }
+        }
+      };
+    }
+
+    case 'FOCUS_START': {
+      const focus = state.focus || createInitialState().focus;
+      const timer = focus.timer || createInitialState().focus.timer;
+
+      if (!canTransitionFocusTimer(timer.status, 'running')) {
+        return state;
+      }
+
+      const nowMs = action.payload?.nowMs ?? Date.now();
+      const tzOffset = action.payload?.timezoneOffset ?? new Date(nowMs).getTimezoneOffset();
+      const mode = action.payload?.mode || timer.mode || 'focus';
+      const durationMs = action.payload?.durationMs
+        ? Math.max(1000, Number(action.payload.durationMs))
+        : (timer.durationMs || 25 * 60 * 1000);
+
+      const sessionId = action.payload?.sessionId || `sess_${nowMs}_${generateUUID().slice(0, 8)}`;
+
+      return {
+        ...state,
+        focus: {
+          ...focus,
+          timer: {
+            ...timer,
+            status: 'running',
+            mode,
+            repoId: action.payload?.repoId !== undefined ? action.payload.repoId : timer.repoId,
+            taskId: action.payload?.taskId !== undefined ? action.payload.taskId : timer.taskId,
+            durationMs,
+            startedAt: nowMs,
+            expectedEndAt: nowMs + durationMs,
+            remainingMs: durationMs,
+            lastClockCheckAt: nowMs,
+            timezoneOffset: tzOffset,
+            sessionId,
+            ambiguousReason: null
+          }
+        }
+      };
+    }
+
+    case 'FOCUS_PAUSE': {
+      const focus = state.focus || createInitialState().focus;
+      const timer = focus.timer || {};
+      if (!canTransitionFocusTimer(timer.status, 'paused')) {
+        return state;
+      }
+
+      const nowMs = action.payload?.nowMs ?? Date.now();
+      const remainingMs = timer.expectedEndAt
+        ? Math.max(0, timer.expectedEndAt - nowMs)
+        : Math.max(0, timer.remainingMs || 0);
+
+      return {
+        ...state,
+        focus: {
+          ...focus,
+          timer: {
+            ...timer,
+            status: 'paused',
+            expectedEndAt: null,
+            remainingMs,
+            lastClockCheckAt: nowMs
+          }
+        }
+      };
+    }
+
+    case 'FOCUS_RESUME': {
+      const focus = state.focus || createInitialState().focus;
+      const timer = focus.timer || {};
+      if (timer.status !== 'paused' && timer.status !== 'interrupted') {
+        return state;
+      }
+
+      const nowMs = action.payload?.nowMs ?? Date.now();
+      const tzOffset = action.payload?.timezoneOffset ?? new Date(nowMs).getTimezoneOffset();
+      const remainingMs = Math.max(1000, timer.remainingMs || timer.durationMs || 60000);
+
+      return {
+        ...state,
+        focus: {
+          ...focus,
+          timer: {
+            ...timer,
+            status: 'running',
+            expectedEndAt: nowMs + remainingMs,
+            remainingMs,
+            lastClockCheckAt: nowMs,
+            timezoneOffset: tzOffset,
+            ambiguousReason: null
+          }
+        }
+      };
+    }
+
+    case 'FOCUS_INTERRUPT': {
+      const focus = state.focus || createInitialState().focus;
+      const timer = focus.timer || {};
+      if (!canTransitionFocusTimer(timer.status, 'interrupted')) {
+        return state;
+      }
+
+      const nowMs = action.payload?.nowMs ?? Date.now();
+      const remainingMs = timer.status === 'running' && timer.expectedEndAt
+        ? Math.max(0, timer.expectedEndAt - nowMs)
+        : Math.max(0, timer.remainingMs || 0);
+
+      return {
+        ...state,
+        focus: {
+          ...focus,
+          timer: {
+            ...timer,
+            status: 'interrupted',
+            expectedEndAt: null,
+            remainingMs,
+            lastClockCheckAt: nowMs,
+            ambiguousReason: action.payload?.reason || 'manual_interrupt'
+          }
+        }
+      };
+    }
+
+    case 'FOCUS_SKIP':
+    case 'FOCUS_DISCARD': {
+      const focus = state.focus || createInitialState().focus;
+      const timer = focus.timer || {};
+      const nextMode = action.payload?.nextMode || timer.mode || 'focus';
+      const defaultMins = nextMode === 'shortBreak'
+        ? (state.config?.shortBreakMinutes || 5)
+        : nextMode === 'longBreak'
+          ? (state.config?.longBreakMinutes || 15)
+          : (state.config?.focusDurationMinutes || 25);
+      const durationMs = defaultMins * 60 * 1000;
+
+      return {
+        ...state,
+        focus: {
+          ...focus,
+          timer: {
+            ...timer,
+            status: 'idle',
+            mode: nextMode,
+            durationMs,
+            startedAt: null,
+            expectedEndAt: null,
+            remainingMs: durationMs,
+            lastClockCheckAt: null,
+            sessionId: null,
+            ambiguousReason: null
+          }
+        }
+      };
+    }
+
+    case 'FOCUS_SYNC_CLOCK': {
+      const focus = state.focus || createInitialState().focus;
+      const timer = focus.timer || {};
+      if (timer.status !== 'running') return state;
+
+      const nowMs = action.payload?.nowMs ?? Date.now();
+      const nowTz = action.payload?.timezoneOffset ?? new Date(nowMs).getTimezoneOffset();
+      const lastCheck = timer.lastClockCheckAt || timer.startedAt || nowMs;
+      const deltaMs = nowMs - lastCheck;
+
+      // 1. Detecta inconsistência de relógio (relógio voltou > 5s, saltou > 6h de uma vez ou fuso horário mudou)
+      const clockMovedBackwards = deltaMs < -5000;
+      const timezoneChanged = typeof timer.timezoneOffset === 'number' && nowTz !== timer.timezoneOffset;
+      const hugeUnexpectedJump = deltaMs > 6 * 3600 * 1000;
+
+      if (clockMovedBackwards || timezoneChanged || hugeUnexpectedJump) {
+        return {
+          ...state,
+          focus: {
+            ...focus,
+            timer: {
+              ...timer,
+              status: 'interrupted',
+              expectedEndAt: null,
+              remainingMs: Math.max(60000, Math.min(timer.durationMs, timer.remainingMs || timer.durationMs)),
+              lastClockCheckAt: nowMs,
+              timezoneOffset: nowTz,
+              ambiguousReason: timezoneChanged ? 'timezone_changed' : 'clock_inconsistency'
+            }
+          }
+        };
+      }
+
+      // 2. Se ocorreu reload ou retorno após longo período e o timer já havia expirado:
+      // NÃO registra automaticamente sem confirmação! Pede confirmação explícita ao usuário.
+      const remainingMs = Math.max(0, (timer.expectedEndAt || nowMs) - nowMs);
+      const overdueMs = nowMs - (timer.expectedEndAt || nowMs);
+
+      if (remainingMs === 0 && (action.payload?.isReload || overdueMs > 120 * 1000)) {
+        return {
+          ...state,
+          focus: {
+            ...focus,
+            timer: {
+              ...timer,
+              status: 'interrupted',
+              expectedEndAt: null,
+              remainingMs: 0,
+              lastClockCheckAt: nowMs,
+              ambiguousReason: 'expired_while_away'
+            }
+          }
+        };
+      }
+
+      return {
+        ...state,
+        focus: {
+          ...focus,
+          timer: {
+            ...timer,
+            remainingMs,
+            lastClockCheckAt: nowMs
+          }
+        }
+      };
+    }
+
+    case 'FOCUS_COMPLETE_SESSION': {
+      const focus = state.focus || createInitialState().focus;
+      const timer = focus.timer || {};
+
+      if (!canTransitionFocusTimer(timer.status, 'completed')) {
+        return state;
+      }
+
+      const nowMs = action.payload?.nowMs ?? Date.now();
+      const nowISO = new Date(nowMs).toISOString();
+      const sessionId = action.payload?.sessionId || timer.sessionId || `sess_${nowMs}`;
+      const isPartial = Boolean(action.payload?.partial);
+
+      // Idempotência estrita por sessionId: nunca duplica sessão por duplo clique ou corrida
+      const existingSessions = Array.isArray(focus.sessions) ? focus.sessions : [];
+      const alreadyRecorded = existingSessions.some(s => s.id === sessionId);
+
+      const elapsedMs = isPartial
+        ? Math.max(60000, (timer.durationMs || 0) - (timer.remainingMs || 0))
+        : (timer.durationMs || 25 * 60 * 1000);
+      const durationMinutes = Math.max(1, Math.round(elapsedMs / 60000));
+
+      let taskTitle = null;
+      if (timer.repoId && timer.taskId && state.projects?.[String(timer.repoId)]) {
+        const foundTask = state.projects[String(timer.repoId)].tasks?.find(t => t.id === timer.taskId);
+        if (foundTask) taskTitle = foundTask.title;
+      }
+
+      const nextSessions = alreadyRecorded
+        ? existingSessions
+        : [
+            {
+              id: sessionId,
+              repoId: timer.repoId || null,
+              taskId: timer.taskId || null,
+              taskTitle,
+              mode: timer.mode || 'focus',
+              durationMinutes,
+              startedAt: timer.startedAt ? new Date(timer.startedAt).toISOString() : nowISO,
+              completedAt: nowISO,
+              partial: isPartial,
+              dateKey: action.payload?.dateKey || getTodayLocalISO()
+            },
+            ...existingSessions
+          ];
+
+      let nextState = {
+        ...state,
+        focus: {
+          ...focus,
+          timer: {
+            ...timer,
+            status: 'completed',
+            expectedEndAt: null,
+            remainingMs: 0,
+            lastClockCheckAt: nowMs,
+            sessionId,
+            ambiguousReason: null
+          },
+          sessions: nextSessions
+        }
+      };
+
+      // Concede XP idempotente apenas para sessões de foco
+      if ((timer.mode || 'focus') === 'focus' && !alreadyRecorded) {
+        nextState = _applyGamificationGrant(nextState, {
+          grantKey: `focus:${sessionId}`,
+          xpAmount: XP_REWARDS.FOCUS_COMPLETE,
+          reason: `Sessão de foco concluída (${durationMinutes} min)`,
+          activityDateISO: action.payload?.dateKey || getTodayLocalISO()
+        });
+      }
+
+      return nextState;
+    }
+
+    // ── Notificações Locais (Controle de Resumo Diário e Prazos) ──
+    case 'NOTIFICATION_MARK_DAILY_SUMMARY': {
+      const gamification = state.gamification || createInitialState().gamification;
+      return {
+        ...state,
+        gamification: {
+          ...gamification,
+          lastDailySummaryDate: action.payload?.dateISO || getTodayLocalISO()
+        }
+      };
+    }
+
+    case 'NOTIFICATION_MARK_TASK_NOTIFIED': {
+      const gamification = state.gamification || createInitialState().gamification;
+      const key = action.payload?.key;
+      if (!key) return state;
+      return {
+        ...state,
+        gamification: {
+          ...gamification,
+          notifiedDueTaskIds: {
+            ...(gamification.notifiedDueTaskIds || {}),
+            [key]: true
+          }
+        }
+      };
+    }
+
     // ── Import / Reset ──────────────────────
     case '_IMPORT_STATE': {
       return {
@@ -756,19 +1298,19 @@ function reducer(state, action) {
         config: action.payload.config || state.config,
         projects: action.payload.projects || {},
         inbox: action.payload.inbox || [],
-        lastVisitedProjectId: action.payload.lastVisitedProjectId || null
+        lastVisitedProjectId: action.payload.lastVisitedProjectId || null,
+        focus: action.payload.focus || state.focus,
+        gamification: action.payload.gamification || state.gamification
       };
     }
 
     case '_RESET_ALL': {
       _undoStack.length = 0;
+      const fresh = createInitialState();
       return {
-        version: CURRENT_VERSION,
+        ...fresh,
         config: state.config,
-        projects: {},
-        inbox: [],
-        lastVisitedProjectId: null,
-        githubCache: { repos: [], fetchedAt: null, rateLimit: null }
+        githubCache: { repos: [], fetchedAt: null, events: [], eventsFetchedAt: null, rateLimit: null }
       };
     }
 

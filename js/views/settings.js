@@ -9,6 +9,8 @@
 import { getState, dispatch } from '../store/store.js';
 import { exportJSON, importJSON, triggerDownload, backup, clearGitHubCache } from '../store/storage.js';
 import { setFxLevel } from '../fx/effects.js';
+import { playTaskDoneSound, triggerHaptic } from '../services/feedback.js';
+import { getNotificationCapability, requestContextualNotificationPermission } from '../services/notifications.js';
 import { showToast } from '../components/toast.js';
 import { openModal } from '../components/modal.js';
 
@@ -63,6 +65,7 @@ function _render() {
   view.appendChild(_buildThemeSection());
   view.appendChild(_buildAccentSection());
   view.appendChild(_buildFxSection());
+  view.appendChild(_buildGamificationAndNotificationsSection());
   view.appendChild(_buildDataSection());
   view.appendChild(_buildDangerSection());
 
@@ -159,6 +162,137 @@ function _buildFxSection() {
   }
 
   section.appendChild(btnGroup);
+  return section;
+}
+
+// ─────────────────────────────────────────────
+// SEÇÃO: GAMIFICAÇÃO, MASCOTE, SONS & NOTIFICAÇÕES LOCAIS (FASE 4)
+// ─────────────────────────────────────────────
+function _buildGamificationAndNotificationsSection() {
+  const section = _buildSection(
+    'Foco, Gamificação & Notificações Locais',
+    'Controle completo sobre XP/Níveis/Conquistas (desligável por completo), mascote cosmético, sons via Web Audio API, vibração (haptics) e notificações locais.'
+  );
+  const state = getState();
+  const cfg = state.config || {};
+  const notifCap = getNotificationCapability();
+
+  const list = document.createElement('div');
+  list.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
+
+  const createToggleRow = ({ id, title, desc, checked, onChange }) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;background:var(--bg-surface);border-radius:var(--radius-md);border:1px solid var(--border-subtle);';
+    row.innerHTML = `
+      <div>
+        <div style="font-size:var(--text-sm);font-weight:600;color:var(--text-main);">${title}</div>
+        <div style="font-size:var(--text-xs);color:var(--text-muted);margin-top:2px;">${desc}</div>
+      </div>
+      <button type="button" id="${id}" class="btn btn-sm ${checked ? 'btn-primary' : 'btn-secondary'}" aria-pressed="${Boolean(checked)}" style="min-width:110px;flex-shrink:0;">
+        ${checked ? '✅ Ativado' : 'Desativado'}
+      </button>
+    `;
+    row.querySelector(`#${id}`)?.addEventListener('click', () => {
+      onChange(!checked);
+    });
+    return row;
+  };
+
+  // 1. Gamificação (desligável por completo)
+  list.appendChild(createToggleRow({
+    id: 'cfg-toggle-gamification',
+    title: '🏅 Sistema de Gamificação (XP, Níveis, Streak, Conquistas e Celebração Épica)',
+    desc: 'Quando desligado, oculta completamente toda a interface de gamificação (barra de XP, rota Conquistas, mascote e celebrações) sem afetar o restante do app.',
+    checked: cfg.gamificationEnabled !== false,
+    onChange: (next) => {
+      dispatch({ type: 'CONFIG_UPDATE', payload: { gamificationEnabled: next } });
+      showToast(next ? '🏅 Gamificação ativada!' : 'Gamificação desativada por completo.', { type: 'info', duration: 2500 });
+      _render();
+    }
+  }));
+
+  // 2. Mascote SVG opcional
+  if (cfg.gamificationEnabled !== false) {
+    list.appendChild(createToggleRow({
+      id: 'cfg-toggle-mascot',
+      title: '🐾 Mascote SVG Reativo (Companheiro de Código)',
+      desc: 'Companheiro puramente cosmético que reage ao foco e comemora entregas (ou cochila tranquilo sem gerar culpa por inatividade).',
+      checked: cfg.mascotEnabled !== false,
+      onChange: (next) => {
+        dispatch({ type: 'CONFIG_UPDATE', payload: { mascotEnabled: next } });
+        showToast(next ? '🐾 Mascote ativado!' : 'Mascote ocultado.', { type: 'info', duration: 2200 });
+        _render();
+      }
+    }));
+  }
+
+  // 3. Efeitos Sonoros (Web Audio API — desligados por padrão)
+  list.appendChild(createToggleRow({
+    id: 'cfg-toggle-sound',
+    title: '🔊 Efeitos Sonoros (Web Audio API)',
+    desc: 'Desligados por padrão. Emite sons sutis ao concluir tarefas, sessões de foco e subir de nível (AudioContext criado somente após gesto).',
+    checked: Boolean(cfg.soundEnabled),
+    onChange: (next) => {
+      dispatch({ type: 'CONFIG_UPDATE', payload: { soundEnabled: next } });
+      if (next) playTaskDoneSound(true);
+      showToast(next ? '🔊 Efeitos sonoros ativados!' : '🔈 Efeitos sonoros desligados.', { type: 'info', duration: 2200 });
+      _render();
+    }
+  }));
+
+  // 4. Vibração Tátil (navigator.vibrate — opt-in, desligado por padrão)
+  list.appendChild(createToggleRow({
+    id: 'cfg-toggle-haptics',
+    title: '📳 Vibração Tátil (navigator.vibrate)',
+    desc: 'Desligado por padrão. Vibração curta em dispositivos compatíveis ao concluir ações ou ciclos de foco.',
+    checked: Boolean(cfg.hapticsEnabled),
+    onChange: (next) => {
+      dispatch({ type: 'CONFIG_UPDATE', payload: { hapticsEnabled: next } });
+      if (next) triggerHaptic([35], true);
+      showToast(next ? '📳 Vibração tátil ativada!' : 'Vibração tátil desativada.', { type: 'info', duration: 2200 });
+      _render();
+    }
+  }));
+
+  // 5. Notificações Locais (Notification API — somente após ação contextual)
+  const permMap = {
+    granted: 'Permitido',
+    denied: 'Bloqueado',
+    default: 'Não solicitado',
+    unsupported: 'Não suportado'
+  };
+  const permLabel = permMap[notifCap.permission] || notifCap.permission;
+  const notifActive = Boolean(cfg.notificationsEnabled && notifCap.permission === 'granted');
+  list.appendChild(createToggleRow({
+    id: 'cfg-toggle-notifications',
+    title: '🔔 Notificações Locais (Fim de Foco e Prazos)',
+    desc: `Status do navegador: ${permLabel}. Avisa quando o timer de foco termina ou há tarefas vencendo hoje.`,
+    checked: notifActive,
+    onChange: (next) => {
+      if (!next) {
+        dispatch({ type: 'CONFIG_UPDATE', payload: { notificationsEnabled: false } });
+        showToast('🔕 Notificações locais desativadas.', { type: 'info', duration: 2200 });
+        _render();
+      } else {
+        requestContextualNotificationPermission(() => _render());
+      }
+    }
+  }));
+
+  // 6. Resumo Diário Opcional (documentando dependência de navegador/aba ativa)
+  list.appendChild(createToggleRow({
+    id: 'cfg-toggle-daily-summary',
+    title: '☀️ Resumo Diário Local Opcional',
+    desc: 'Exibe 1 notificação de resumo ao usar o painel no dia. Nota: notificações locais dependem de o navegador/aba estar ativo (sem push remoto quando o SO suspende o app).',
+    checked: Boolean(cfg.dailySummaryEnabled),
+    onChange: (next) => {
+      dispatch({ type: 'CONFIG_UPDATE', payload: { dailySummaryEnabled: next } });
+      showToast(next ? '☀️ Resumo diário local ativado!' : 'Resumo diário desativado.', { type: 'info', duration: 2500 });
+      _render();
+    }
+  }));
+
+  section.appendChild(list);
   return section;
 }
 

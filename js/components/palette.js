@@ -278,11 +278,39 @@ function _buildCatalogAndSearch(query) {
       run: () => _openChangeProjectStatusModal()
     },
     {
+      icon: '🍅',
+      title: 'Abrir Modo Foco / Pomodoro',
+      subtitle: 'Navegar para #/focus (Atalho: G F)',
+      category: 'Navegação',
+      run: () => navigate('#/focus')
+    },
+    ...(state.config?.gamificationEnabled !== false ? [{
+      icon: '🏅',
+      title: 'Abrir Galeria de Conquistas, XP & Streak',
+      subtitle: 'Navegar para #/achievements (Atalho: G A)',
+      category: 'Navegação',
+      run: () => navigate('#/achievements')
+    }] : []),
+    {
       icon: '📋',
       title: 'Ir para o Quadro Kanban',
       subtitle: 'Navegar para #/kanban (Atalho: G K)',
       category: 'Navegação',
       run: () => navigate('#/kanban')
+    },
+    {
+      icon: '🌌',
+      title: 'Abrir Galáxia de Projetos (Canvas 2D)',
+      subtitle: 'Navegar para #/galaxy (Atalho: G X)',
+      category: 'Navegação',
+      run: () => navigate('#/galaxy')
+    },
+    {
+      icon: '🕸️',
+      title: 'Abrir Grafo de Conexões',
+      subtitle: 'Navegar para #/graph (Atalho: G G)',
+      category: 'Navegação',
+      run: () => navigate('#/graph')
     },
     {
       icon: '🏠',

@@ -84,6 +84,18 @@
   --z-dock: 110;
   --z-modal: 1000;
   --z-toast: 2000;
+
+  /* Aurora Reativa (Valores padrão — atualizados pelo status dominante via effects.js) */
+  --aurora-1: rgba(6, 182, 212, 0.16);
+  --aurora-2: rgba(59, 130, 246, 0.13);
+  --aurora-3: rgba(139, 92, 246, 0.10);
+}
+
+/* Propriedade tipada CSS para borda animada com gradiente giratório (com fallback seguro) */
+@property --border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
 }
 
 /* ==========================================================================
@@ -239,11 +251,15 @@
 }
 
 /* ==========================================================================
-   NÍVEIS DE EFEITOS ADAPTATIVOS (completo, reduzido, mínimo)
+   NÍVEIS DE EFEITOS ADAPTATIVOS (completo, reduzido, mínimo) & PERFIS
    ========================================================================== */
 
-[data-fx="reduzido"] {
+[data-device="mobile"] {
   --glass-blur: 8px;
+}
+
+[data-fx="reduzido"] {
+  --glass-blur: 6px;
   --shadow-glow: none;
 }
 
@@ -253,6 +269,18 @@
   --duration-fast: 0ms;
   --duration-normal: 0ms;
   --duration-slow: 0ms;
+}
+
+/* Fallback seguro para navegadores sem suporte a backdrop-filter */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root, [data-theme="dark"] {
+    --bg-card: rgba(18, 18, 28, 0.96);
+    --bg-surface: rgba(25, 25, 38, 0.98);
+  }
+  [data-theme="light"] {
+    --bg-card: rgba(255, 255, 255, 0.98);
+    --bg-surface: rgba(255, 255, 255, 0.99);
+  }
 }
 
 /* Respeito estrito a prefers-reduced-motion */

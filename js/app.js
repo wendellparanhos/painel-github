@@ -1,21 +1,23 @@
 /**
- * Bootstrap da aplicação.
+ * Bootstrap da aplicação — Fase 3.
  * Ponto de entrada único — responsável por:
  *   1. Inicializar o store (carrega dados persistidos e migrações)
  *   2. Aplicar configurações salvas (tema, acento, nível de efeitos)
- *   3. Inicializar o motor de efeitos adaptativos
+ *   3. Inicializar o motor de efeitos adaptativos e monitor de FPS com histerese
  *   4. Renderizar a navegação + botão da Command Palette + FAB da Inbox
- *   5. Iniciar o router (Home, Project, Kanban, Inbox, Settings)
+ *   5. Iniciar o router (Home, Project, Kanban, Inbox, Settings + Galáxia, Grafo e Bolhas via import() dinâmico)
  *   6. Inicializar atalhos de teclado globais
- *   7. Monitorar eventos do sistema (storage, fx, quota)
+ *   7. Monitorar eventos do sistema (storage, fx auto-downgrade com opção Reverter, quota)
  */
 
-import { initStore, getState } from './store/store.js';
+import { initStore, getState, dispatch } from './store/store.js';
 import { initRouter } from './router.js';
-import { initEffects, applyFxLevel } from './fx/effects.js';
+import { initEffects, applyFxLevel, setFxLevel } from './fx/effects.js';
 import { renderNav } from './components/nav.js';
 import { showToast } from './components/toast.js';
 import { initShortcuts } from './utils/shortcuts.js';
+import { initFeedbackListeners } from './services/feedback.js';
+import { checkDailyNotificationsAndReminders } from './services/notifications.js';
 
 import { HomeView } from './views/home.js';
 import { ProjectView } from './views/project.js';
@@ -50,7 +52,7 @@ async function boot() {
   root.setAttribute('data-theme', theme || 'dark');
   root.setAttribute('data-accent', accent || 'violet');
 
-  // 3. Inicializa motor de efeitos (respeita prefers-reduced-motion e hardware)
+  // 3. Inicializa motor de efeitos (respeita prefers-reduced-motion, hardware e monitor de FPS)
   initEffects(fxLevel || 'completo');
 
   // 4. Obtém o shell do app
@@ -60,8 +62,12 @@ async function boot() {
     return;
   }
 
-  // 5. Renderiza a navegação (header + dock mobile + botão palette + FAB Inbox)
-  renderNav(appRoot);
+  // 5. Renderiza a navegação (header + dock desktop animada + dock mobile + palette + FAB Inbox)
+  try {
+    renderNav(appRoot);
+  } catch (err) {
+    console.error('[App] Erro ao renderizar navegação:', err);
+  }
 
   // 6. Cria o container principal das views
   const mainContent = document.createElement('main');
@@ -70,7 +76,7 @@ async function boot() {
   mainContent.setAttribute('role', 'main');
   appRoot.appendChild(mainContent);
 
-  // 7. Define as rotas
+  // 7. Define as rotas (visualizações especiais carregadas sob demanda via import() dinâmico)
   const routes = [
     {
       pattern: '#/home',
@@ -83,6 +89,26 @@ async function boot() {
     {
       pattern: '#/kanban',
       view: KanbanView
+    },
+    {
+      pattern: '#/focus',
+      loader: () => import('./views/focus.js')
+    },
+    {
+      pattern: '#/achievements',
+      loader: () => import('./views/achievements.js')
+    },
+    {
+      pattern: '#/galaxy',
+      loader: () => import('./views/galaxy.js')
+    },
+    {
+      pattern: '#/graph',
+      loader: () => import('./views/graph.js')
+    },
+    {
+      pattern: '#/bubbles',
+      loader: () => import('./views/bubbles.js')
     },
     {
       pattern: '#/inbox',
@@ -100,8 +126,23 @@ async function boot() {
   // 9. Inicializa atalhos de teclado globais
   initShortcuts();
 
-  // 10. Monitora eventos do sistema
+  // 10. Inicializa listeners de feedback (gamificação, sons opt-in, level up, celebração épica) e notificações locais
+  try {
+    initFeedbackListeners();
+    setTimeout(() => checkDailyNotificationsAndReminders(), 1500);
+  } catch (err) {
+    console.warn('[App] Aviso ao inicializar feedback/notificações:', err);
+  }
+
+  // 11. Monitora eventos do sistema
   _setupSystemListeners();
+
+  // Remove loader inicial imediatamente após montar a view
+  const loader = document.getElementById('initial-loader');
+  if (loader) {
+    loader.classList.add('is-hidden');
+    setTimeout(() => loader.remove(), 350);
+  }
 
   console.info('[App] Painel inicializado com sucesso.');
 }
@@ -111,7 +152,25 @@ async function boot() {
 // ─────────────────────────────────────────────
 function _setupSystemListeners() {
   document.addEventListener('fx:level-changed', (e) => {
-    applyFxLevel(e.detail.level);
+    const level = e.detail.level;
+    applyFxLevel(level);
+    dispatch({ type: 'CONFIG_UPDATE', payload: { fxLevel: level } });
+  });
+
+  // Quando o monitor de FPS detecta queda sustentada (< 45 fps em 2+ janelas consecutivas)
+  document.addEventListener('fx:auto-downgraded', (e) => {
+    const { from, to, fps } = e.detail;
+    showToast(`⚡ Efeitos ajustados de "${from}" para "${to}" (${fps} fps medidos) para manter a fluidez.`, {
+      type: 'info',
+      duration: 8000,
+      action: {
+        label: 'Reverter',
+        fn: () => {
+          setFxLevel(from, true, true);
+          showToast(`Nível visual revertido para "${from}".`, { type: 'info', duration: 3000 });
+        }
+      }
+    });
   });
 
   document.addEventListener('storage:quota-exceeded', () => {
@@ -138,4 +197,8 @@ function _setupSystemListeners() {
 // ─────────────────────────────────────────────
 // INICIALIZAÇÃO
 // ─────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', boot);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}

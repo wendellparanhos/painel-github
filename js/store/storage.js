@@ -9,7 +9,7 @@
 
 export const STORAGE_KEY = 'panel_state_v1';
 export const BACKUP_KEY = 'panel_backup';
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
 
 // ─────────────────────────────────────────────
 // ESTADO INICIAL (fallback caso não exista dado)
@@ -21,14 +21,63 @@ export function createInitialState() {
       theme: 'dark',           // 'dark' | 'light' | 'system'
       accent: 'violet',        // 'violet' | 'cyan' | 'emerald' | 'amber' | 'rose' | 'blue'
       fxLevel: 'completo',     // 'completo' | 'reduzido' | 'minimo'
-      homeViewMode: 'grid'     // 'grid' | 'list' | 'kanban'
+      homeViewMode: 'grid',    // 'grid' | 'list' | 'kanban'
+      // Fase 4: Foco, Gamificação, Áudio/Haptics e Notificações Locais
+      gamificationEnabled: true,
+      mascotEnabled: true,
+      soundEnabled: false,
+      ambientSound: 'off',     // 'off' | 'rain' | 'brown' | 'pink'
+      hapticsEnabled: false,
+      notificationsEnabled: false,
+      dailySummaryEnabled: false,
+      dailyFocusGoalMinutes: 50,
+      weeklyTasksGoal: 10,
+      weeklyFocusGoalMinutes: 120,
+      focusDurationMinutes: 25,
+      shortBreakMinutes: 5,
+      longBreakMinutes: 15
     },
     projects: {},
     inbox: [],
     lastVisitedProjectId: null,
+    focus: {
+      timer: {
+        status: 'idle',          // 'idle' | 'running' | 'paused' | 'completed' | 'interrupted'
+        mode: 'focus',           // 'focus' | 'shortBreak' | 'longBreak'
+        repoId: null,
+        taskId: null,
+        durationMs: 25 * 60 * 1000,
+        startedAt: null,
+        expectedEndAt: null,
+        remainingMs: 25 * 60 * 1000,
+        lastClockCheckAt: null,
+        timezoneOffset: new Date().getTimezoneOffset(),
+        sessionId: null,
+        ambiguousReason: null
+      },
+      sessions: []
+    },
+    gamification: {
+      xp: 0,
+      level: 1,
+      xpGrants: {},              // { [grantId]: { xp, timestamp, type } } — idempotente
+      streak: {
+        current: 0,
+        longest: 0,
+        lastActiveDate: null,
+        timezoneOffset: new Date().getTimezoneOffset(),
+        lastTimezoneShiftAt: null,
+        activeDates: []
+      },
+      unlockedAchievements: {},  // { [achievementId]: unlockedAtISO }
+      lastDailySummaryDate: null,
+      notifiedDueTaskIds: {}     // { [date_taskId]: true }
+    },
     githubCache: {
       repos: [],
       fetchedAt: null,
+      events: [],
+      eventsFetchedAt: null,
       rateLimit: null
     }
   };
@@ -96,6 +145,44 @@ const migrations = {
           }));
         }
       }
+    }
+    return state;
+  },
+  3: (state) => {
+    state.version = 3;
+    const defaults = createInitialState();
+    state.config = {
+      ...defaults.config,
+      ...state.config
+    };
+    if (!state.focus || typeof state.focus !== 'object') {
+      state.focus = defaults.focus;
+    } else {
+      state.focus = {
+        timer: { ...defaults.focus.timer, ...(state.focus.timer || {}) },
+        sessions: Array.isArray(state.focus.sessions) ? state.focus.sessions : []
+      };
+    }
+    if (!state.gamification || typeof state.gamification !== 'object') {
+      state.gamification = defaults.gamification;
+    } else {
+      state.gamification = {
+        ...defaults.gamification,
+        ...state.gamification,
+        xpGrants: state.gamification.xpGrants && typeof state.gamification.xpGrants === 'object'
+          ? state.gamification.xpGrants
+          : {},
+        streak: {
+          ...defaults.gamification.streak,
+          ...(state.gamification.streak || {}),
+          activeDates: Array.isArray(state.gamification?.streak?.activeDates)
+            ? state.gamification.streak.activeDates
+            : []
+        },
+        unlockedAchievements: state.gamification.unlockedAchievements && typeof state.gamification.unlockedAchievements === 'object'
+          ? state.gamification.unlockedAchievements
+          : {}
+      };
     }
     return state;
   }
@@ -176,6 +263,51 @@ function mergeWithDefaults(state) {
   // Cache do GitHub
   if (typeof state.githubCache !== 'object' || state.githubCache === null) {
     state.githubCache = defaults.githubCache;
+  } else {
+    state.githubCache = {
+      ...defaults.githubCache,
+      ...state.githubCache,
+      repos: Array.isArray(state.githubCache.repos) ? state.githubCache.repos : [],
+      events: Array.isArray(state.githubCache.events) ? state.githubCache.events : []
+    };
+  }
+
+  // Foco (Fase 4)
+  if (typeof state.focus !== 'object' || state.focus === null) {
+    state.focus = defaults.focus;
+  } else {
+    state.focus = {
+      timer: { ...defaults.focus.timer, ...(state.focus.timer || {}) },
+      sessions: Array.isArray(state.focus.sessions)
+        ? state.focus.sessions.filter(s => s && typeof s.id === 'string')
+        : []
+    };
+  }
+
+  // Gamificação (Fase 4)
+  if (typeof state.gamification !== 'object' || state.gamification === null) {
+    state.gamification = defaults.gamification;
+  } else {
+    state.gamification = {
+      ...defaults.gamification,
+      ...state.gamification,
+      xpGrants: state.gamification.xpGrants && typeof state.gamification.xpGrants === 'object'
+        ? state.gamification.xpGrants
+        : {},
+      streak: {
+        ...defaults.gamification.streak,
+        ...(state.gamification.streak || {}),
+        activeDates: Array.isArray(state.gamification?.streak?.activeDates)
+          ? state.gamification.streak.activeDates
+          : []
+      },
+      unlockedAchievements: state.gamification.unlockedAchievements && typeof state.gamification.unlockedAchievements === 'object'
+        ? state.gamification.unlockedAchievements
+        : {},
+      notifiedDueTaskIds: state.gamification.notifiedDueTaskIds && typeof state.gamification.notifiedDueTaskIds === 'object'
+        ? state.gamification.notifiedDueTaskIds
+        : {}
+    };
   }
 
   return state;
@@ -301,7 +433,9 @@ export function exportJSON(state) {
     config: state.config,
     projects: state.projects,
     inbox: state.inbox || [],
-    lastVisitedProjectId: state.lastVisitedProjectId || null
+    lastVisitedProjectId: state.lastVisitedProjectId || null,
+    focus: state.focus || { timer: { status: 'idle', mode: 'focus' }, sessions: [] },
+    gamification: state.gamification || { xp: 0, level: 1, xpGrants: {}, streak: { current: 0, longest: 0, activeDates: [] }, unlockedAchievements: {} }
   };
   return JSON.stringify(exportData, null, 2);
 }
@@ -388,6 +522,8 @@ export function clearGitHubCache(currentState) {
     githubCache: {
       repos: [],
       fetchedAt: null,
+      events: [],
+      eventsFetchedAt: null,
       rateLimit: null
     }
   };

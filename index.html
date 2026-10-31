@@ -26,11 +26,11 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 
   <!-- CSS — ordem importa: tokens → base → components → layout → views -->
-  <link rel="stylesheet" href="css/tokens.css">
-  <link rel="stylesheet" href="css/base.css">
-  <link rel="stylesheet" href="css/components.css">
-  <link rel="stylesheet" href="css/layout.css">
-  <link rel="stylesheet" href="css/views.css">
+  <link rel="stylesheet" href="css/tokens.css?v=4.1">
+  <link rel="stylesheet" href="css/base.css?v=4.1">
+  <link rel="stylesheet" href="css/components.css?v=4.1">
+  <link rel="stylesheet" href="css/layout.css?v=4.1">
+  <link rel="stylesheet" href="css/views.css?v=4.1">
 
   <!-- Estilos adicionais in-line mínimos: utilitários e markdown extras -->
   <style>
@@ -77,6 +77,8 @@
     .home-view,
     .project-view,
     .kanban-view,
+    .galaxy-view,
+    .graph-view,
     .inbox-view,
     .settings-view {
       animation: viewFadeIn 280ms var(--ease-smooth) both;
@@ -86,6 +88,8 @@
       .home-view,
       .project-view,
       .kanban-view,
+      .galaxy-view,
+      .graph-view,
       .inbox-view,
       .settings-view {
         animation: none;
@@ -164,20 +168,24 @@
   <div id="app-root"></div>
 
   <!-- Bootstrap da aplicação (ES Module) -->
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=4.1"></script>
 
   <!-- Remove o loader assim que o DOM estiver pronto -->
   <script>
-    window.addEventListener('DOMContentLoaded', () => {
-      // Aguarda um frame para o módulo ter tempo de iniciar
+    function hideInitialLoader() {
       setTimeout(() => {
         const loader = document.getElementById('initial-loader');
         if (loader) {
           loader.classList.add('is-hidden');
           setTimeout(() => loader.remove(), 400);
         }
-      }, 300);
-    });
+      }, 250);
+    }
+    if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', hideInitialLoader);
+    } else {
+      hideInitialLoader();
+    }
   </script>
 </body>
 </html>

@@ -83,6 +83,26 @@ function _handleGlobalKeyDown(e) {
       navigate('#/inbox');
       return;
     }
+    if (lower === 'x') {
+      e.preventDefault();
+      navigate('#/galaxy');
+      return;
+    }
+    if (lower === 'g') {
+      e.preventDefault();
+      navigate('#/graph');
+      return;
+    }
+    if (lower === 'f') {
+      e.preventDefault();
+      navigate('#/focus');
+      return;
+    }
+    if (lower === 'a') {
+      e.preventDefault();
+      navigate('#/achievements');
+      return;
+    }
   }
 
   if (key === 'g' || key === 'G') {
@@ -150,6 +170,10 @@ export function openShortcutsHelpModal() {
     { keys: 'C', desc: 'Captura rápida na Inbox' },
     { keys: 'G  depois  H', desc: 'Ir para a Home (#/home)' },
     { keys: 'G  depois  K', desc: 'Ir para o Quadro Kanban (#/kanban)' },
+    { keys: 'G  depois  F', desc: 'Ir para o Modo Foco / Pomodoro (#/focus)' },
+    { keys: 'G  depois  A', desc: 'Ir para Conquistas & Streak (#/achievements)' },
+    { keys: 'G  depois  X', desc: 'Ir para a Galáxia de Projetos (#/galaxy)' },
+    { keys: 'G  depois  G', desc: 'Ir para o Grafo de Conexões (#/graph)' },
     { keys: 'G  depois  I', desc: 'Ir para a Inbox (#/inbox)' },
     { keys: 'Alt + ◀ / ▶', desc: 'Mover cartão focado no Kanban entre colunas' },
     { keys: '?', desc: 'Exibir este guia de atalhos' },

@@ -605,3 +605,140 @@
   border-radius: 4px;
   font-size: 10px;
 }
+
+/* ==========================================================================
+   FASE 3: CAMADA AMBIENTE (AURORA REATIVA + GRADE 3D + PARTÍCULAS)
+   ========================================================================== */
+.ambient-fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  --parallax-x: 0px;
+  --parallax-y: 0px;
+}
+
+/* Aurora Reativa (Gradiente CSS barato com transição suave por status dominante + horário) */
+.ambient-aurora {
+  position: absolute;
+  inset: -15%;
+  background:
+    radial-gradient(circle at 18% 18%, var(--aurora-1), transparent 48%),
+    radial-gradient(circle at 82% 24%, var(--aurora-2), transparent 52%),
+    radial-gradient(circle at 50% 80%, var(--aurora-3), transparent 55%);
+  transition: background 900ms ease, opacity 600ms ease;
+  opacity: 0.95;
+}
+
+[data-daytime="morning"] .ambient-aurora {
+  filter: hue-rotate(-8deg);
+}
+
+[data-daytime="evening"] .ambient-aurora {
+  filter: hue-rotate(10deg);
+}
+
+[data-fx="minimo"] .ambient-aurora {
+  opacity: 0.55;
+  transition: none;
+}
+
+/* Grade 3D com Parallax (opcional — desligada em reduzido/mínimo e mobile) */
+.ambient-3d-grid {
+  position: absolute;
+  inset: -10%;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at 50% 35%, rgba(0, 0, 0, 0.65) 10%, transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 35%, rgba(0, 0, 0, 0.65) 10%, transparent 72%);
+  transform: perspective(700px) rotateX(28deg) translate3d(var(--parallax-x), var(--parallax-y), 0);
+  transition: transform 200ms ease-out;
+}
+
+[data-fx="reduzido"] .ambient-3d-grid,
+[data-fx="minimo"] .ambient-3d-grid,
+[data-device="mobile"] .ambient-3d-grid {
+  display: none;
+}
+
+.ambient-particles-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+[data-fx="reduzido"] .ambient-particles-canvas,
+[data-fx="minimo"] .ambient-particles-canvas {
+  display: none;
+}
+
+/* ==========================================================================
+   FASE 3: BORDAS GIRATÓRIAS (@property), TEXTO GRADIENTE, MAGNETIC & SPARKLINE
+   ========================================================================== */
+@keyframes spinBorderAngle {
+  to {
+    --border-angle: 360deg;
+  }
+}
+
+.animated-border-card {
+  position: relative;
+  border: 1px solid var(--accent-primary);
+  background:
+    linear-gradient(var(--bg-card), var(--bg-card)) padding-box,
+    conic-gradient(
+      from var(--border-angle, 0deg),
+      var(--border-card) 20%,
+      var(--accent-primary) 50%,
+      var(--accent-tertiary) 70%,
+      var(--border-card) 90%
+    ) border-box;
+  border-color: transparent;
+  animation: spinBorderAngle 8s linear infinite;
+}
+
+[data-fx="minimo"] .animated-border-card {
+  animation: none;
+  border-color: var(--accent-primary);
+}
+
+.text-gradient-reveal {
+  background: linear-gradient(125deg, var(--text-main) 25%, var(--accent-primary) 65%, var(--accent-tertiary) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: inline-block;
+}
+
+[data-fx="minimo"] .text-gradient-reveal {
+  background: none;
+  color: var(--text-main);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-fx="completo"] .btn-magnetic,
+  [data-fx="completo"] .inbox-fab {
+    transform: translate3d(var(--mag-x, 0px), var(--mag-y, 0px), 0);
+  }
+}
+
+/* Sparkline nos Cards */
+.card-sparkline-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+}
+
+.card-sparkline-label {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}

@@ -212,6 +212,118 @@ async function _fetchAllPages(signal) {
 }
 
 // ─────────────────────────────────────────────
+// EVENTOS PÚBLICOS DO USUÁRIO (Fase 3: Heatmap 2D, Sparklines e Anel de Commits)
+// Regra de orçamento: 1 única chamada pública, cacheada em `githubCache.events`.
+// ZERO chamadas por card!
+// ─────────────────────────────────────────────
+export async function fetchUserPublicEvents(githubCache, forceRefresh = false, signal = null) {
+  const cacheKey = `events:${GITHUB_USER}`;
+
+  if (!forceRefresh && githubCache?.eventsFetchedAt && Array.isArray(githubCache?.events)) {
+    const age = Date.now() - new Date(githubCache.eventsFetchedAt).getTime();
+    if (age < CACHE_TTL_MS) {
+      return {
+        data: githubCache.events,
+        source: 'cache',
+        fetchedAt: githubCache.eventsFetchedAt,
+        rateLimit: githubCache.rateLimit || null,
+        error: null
+      };
+    }
+  }
+
+  if (!forceRefresh && githubCache?.rateLimit && isRateLimited(githubCache.rateLimit)) {
+    return {
+      data: Array.isArray(githubCache.events) ? githubCache.events : null,
+      source: 'rate-limit',
+      fetchedAt: githubCache.eventsFetchedAt || null,
+      rateLimit: githubCache.rateLimit,
+      error: 'Limite da API do GitHub atingido.'
+    };
+  }
+
+  if (_inflight.has(cacheKey)) {
+    return _inflight.get(cacheKey);
+  }
+
+  const fetchPromise = (async () => {
+    const url = `${GITHUB_API}/users/${GITHUB_USER}/events/public?per_page=100`;
+    try {
+      const response = await fetchWithTimeout(url, { signal }, 9000);
+      const rateLimit = parseRateLimit(response);
+
+      if (response.status === 403 || response.status === 429) {
+        return {
+          data: Array.isArray(githubCache?.events) ? githubCache.events : null,
+          source: 'rate-limit',
+          fetchedAt: githubCache?.eventsFetchedAt || null,
+          rateLimit,
+          error: 'Limite da API do GitHub atingido.'
+        };
+      }
+
+      if (!response.ok) {
+        return {
+          data: null,
+          source: 'error',
+          fetchedAt: null,
+          rateLimit,
+          error: `Eventos públicos indisponíveis (HTTP ${response.status}).`
+        };
+      }
+
+      const events = await response.json();
+      if (!Array.isArray(events)) {
+        return {
+          data: null,
+          source: 'error',
+          fetchedAt: null,
+          rateLimit,
+          error: 'Formato inesperado de eventos públicos.'
+        };
+      }
+
+      // Reduz tamanho do payload antes de persistir no localStorage (mantém só campos necessários)
+      const compactEvents = events.map(ev => ({
+        id: ev.id,
+        type: ev.type,
+        created_at: ev.created_at,
+        repo: ev.repo ? { id: ev.repo.id, name: ev.repo.name } : null,
+        commitsCount: ev.type === 'PushEvent'
+          ? (ev.payload?.size || ev.payload?.distinct_size || (Array.isArray(ev.payload?.commits) ? ev.payload.commits.length : 1))
+          : 0
+      }));
+
+      return {
+        data: compactEvents,
+        source: 'network',
+        fetchedAt: new Date().toISOString(),
+        rateLimit,
+        error: null
+      };
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        return { data: null, source: 'aborted', fetchedAt: null, rateLimit: null, error: 'Cancelado.' };
+      }
+      return {
+        data: Array.isArray(githubCache?.events) ? githubCache.events : null,
+        source: 'offline',
+        fetchedAt: githubCache?.eventsFetchedAt || null,
+        rateLimit: null,
+        error: 'Eventos públicos indisponíveis offline.'
+      };
+    }
+  })();
+
+  _inflight.set(cacheKey, fetchPromise);
+  try {
+    return await fetchPromise;
+  } finally {
+    _inflight.delete(cacheKey);
+  }
+}
+
+// ─────────────────────────────────────────────
 // ATIVIDADE DE UM REPOSITÓRIO: COMMITS, PRS E ISSUES
 // (Chamados sob demanda dentro da tela de projeto, com cache próprio e erro isolado)
 // ─────────────────────────────────────────────

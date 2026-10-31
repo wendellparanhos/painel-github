@@ -87,3 +87,48 @@ Este documento lista os testes essenciais que devem ser executados ao final de c
 - [x] Atalhos globais de teclado (`/`, `n`, `c`, `g h`, `g k`, `g i`, `?`) ignorados quando o foco está em `input`, `textarea`, `select`, `contenteditable`, com modal/palette abertos ou com teclas modificadoras
 - [x] Home ampliada: filtros por prioridade, prazo, tarefas atrasadas e fixados; alternância `Grid` / `Lista` / `Kanban`; seções `"Continue de onde parou"`, `"Em foco"` (com conclusão direta da tarefa) e alerta de tarefas vencidas
 - [x] Migração automática de esquema `v1 -> v2` com backup prévio em `localStorage`
+
+---
+
+## 9. Fase 3 — Performance Adaptativa, Gráficos e Efeitos de Interface
+- [x] Monitor de FPS com histerese: exige queda sustentada (< 45 fps em ≥ 2 janelas consecutivas) e cooldown de 15s antes de rebaixar nível (`completo` → `reduzido` → `mínimo`), exibindo toast com botão `"Reverter"` e sem subir sozinho em loop
+- [x] `prefers-reduced-motion: reduce` força nível `mínimo`, desliga movimento contínuo não essencial e não pode ser sobreposto por auto-detecção ou preferência salva
+- [x] Loop de animação compartilhado pausa com aba oculta (`visibilitychange`) e libera todos os RAFs, `ResizeObserver`s e listeners ao sair da view (`cleanupViewEffects`)
+- [x] Perfis `mobile` vs `desktop` (`data-device`) e `devicePixelRatio` limitado (`≤ 2`) em todos os Canvas
+- [x] Anéis estilo Apple Watch: Tarefas do dia, Commits do dia e Foco (anel de foco explicitamente vazio até a Fase 4, sem valores fictícios)
+- [x] Sparklines nos cards renderizadas somente quando há amostra suficiente em cache (zero requisições por card); Donut de status, Commits por semana e Barra de linguagens empilhada SVG que desenha ao entrar
+- [x] Heatmap 2D de atividade pública do GitHub com tooltip, legenda, resumo textual acessível e estado `"Indisponível"` honesto (nunca exibido como zero falso)
+- [x] Home em Bento Grid consolidada priorizando no celular: tarefa em foco, projeto recente (`Continue de onde parou`) e ações rápidas acima; gráficos secundários abaixo
+- [x] Aurora reativa (gradiente CSS leve sincronizado ao status dominante + horário do dia), borda giratória (`@property` com fallback), Flip 3D opcional e acessível nos cards (frente: resumo; verso: tarefas rápidas), Dock desktop em onda e Partículas/Grade 3D desligadas em `reduzido`/`mínimo`
+
+---
+
+## 10. Fase 3 — Visualizações Especiais (Carregadas sob Demanda via `import()`)
+- [x] Galáxia de projetos (`#/galaxy`, Canvas 2D): carregada sob demanda via `import()`; tamanho por atividade/estrelas, cor por status, brilho por saúde simples com legenda, órbitas por linguagem, pan/zoom/pinch-to-zoom, busca com destaque, botão recentralizar, resumo acessível ao tocar e lista alternativa completa para teclado/leitor de tela
+- [x] Grafo de conexões (`#/graph`): carregado sob demanda via `import()`; arestas por linguagem/tópicos em comum com legenda explícita do critério (sem sugerir dependência real), nós arrastáveis, destaque de vizinhança, filtros contra excesso de arestas, lista alternativa e simulação física que **para completamente ao estabilizar** (0% CPU)
+- [x] Modo Bolhas experimental (`#/bubbles` e seletor na Home): carregado sob demanda via `import()`; elementos flutuantes arrastáveis com limite de objetos, botão reorganizar, fallback imediato para Grid e física que para ao estabilizar (0% CPU)
+
+
+---
+
+## 11. Fase 4 — Modo Foco / Pomodoro (`#/focus`) e Precisão do Timer
+- [x] Seleção de projeto e tarefa (com suporte a pré-seleção direta a partir da Home) e timer circular animado configurável (`Foco`, `Pausa Curta`, `Pausa Longa`) com botões contextuais de iniciar, pausar, retomar, pular e encerrar
+- [x] Máquina de estados explícita (`idle`, `running`, `paused`, `completed`, `interrupted`) com validação de transições permitidas vs. proibidas (`canTransitionFocusTimer`)
+- [x] Precisão pelo relógio de parede (`expectedEndAt - Date.now()`), nunca confiando em contagem de `setInterval`; recálculo imediato ao voltar de aba em segundo plano (`visibilitychange`)
+- [x] Detecção de reload com sessão expirada (`expired_while_away`), suspensão prolongada ou mudança de horário/fuso do sistema (`clock_inconsistency` / `timezone_changed`): transiciona para `interrupted` e **exige confirmação explícita** (retomar, registrar tempo parcial/concluído ou descartar), sem nunca registrar sessão interrompida/ambígua automaticamente
+- [x] Registro de sessões por tarefa e por projeto com **ID idempotente por sessão** (`sessionId`), evitando duplicação por duplo clique ou corrida entre reload e finalização
+- [x] Anel de Foco nos Anéis estilo Apple Watch da Home conectado aos minutos reais de foco concluídos no dia (`computeDailyRingsData`)
+- [x] **Modo Cinema**: esconde header, dock, FAB e painéis secundários, deixando apenas a tarefa ativa, o timer circular e fundo leve; saída garantida por tecla `Escape` e por botão visível (`✕ Sair do Modo Cinema`)
+- [x] Sons ambiente procedurais (`Chuva Suave`, `Ruído Marrom`, `Brisa Rosa`) e efeitos sonoros simples via Web Audio API **desligados por padrão** (`AudioContext` instanciado somente após gesto do usuário); haptics (`navigator.vibrate`) estritamente opt-in
+
+---
+
+## 12. Fase 4 — Gamificação Idempotente, Conquistas (`#/achievements`) e Notificações Locais
+- [x] Concessão de XP por ações significativas (`+15 XP` tarefa concluída, `+25 XP` sessão de foco concluída, `+100 XP` projeto concluído) usando **chave idempotente** (`xpGrants`: `task:<id>`, `focus:<sessionId>`, `project:<repoId>`) para que reabrir/concluir tarefa ou alternar status de projeto **nunca conceda XP duas vezes**
+- [x] Níveis com barra de progresso de XP e modal de **Level Up**
+- [x] Streak diário com regra documentada na UI: chave única de dia civil local (`YYYY-MM-DD`), fuso horário declarado e proteção contra mudança de fuso em viagem sem recalcular silenciosamente o histórico passado, além de metas semanais configuráveis
+- [x] Galeria de Conquistas (`#/achievements`) com progresso individual (Primeira Entrega, 10 Tarefas no Dia, Foco Iniciado, Maratona de Foco 120m, Streak 3 e 7 dias, Primeiro Projeto Concluído, Portfólio de Elite)
+- [x] Celebração épica ao concluir um projeto (`status: concluído`): fogos em tela cheia em Canvas adaptativo (respeitando `getFxLevel()` e `prefers-reduced-motion`), mensagem e som/vibração opcionais
+- [x] Mascote SVG opcional (`CodeBuddy`) que reage ao dia (visor em foco, comemoração em dia ativo, ou cochilo tranquilo quando ausente por dias **sem gerar culpa por inatividade**), puramente cosmético e desligável
+- [x] Desligar a gamificação nas Configurações (`gamificationEnabled: false`) oculta 100% da interface de gamificação (pill de XP/streak no header, link de Conquistas, mascote, toasts de XP e celebrações) sem afetar o restante do app
+- [x] Notificações locais (`Notification` API) para fim de foco, prazos do dia e resumo diário opcional: permissão solicitada **somente após ação contextual** com modal explicando o benefício; degradação graciosa quando `Notification` não existir ou permissão for negada, sem bloquear o timer; documentação explícita de que notificações locais dependem do navegador/aba estar ativo

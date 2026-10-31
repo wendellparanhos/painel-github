@@ -1,11 +1,13 @@
 /**
- * Componente de Navegação (Header + Dock Mobile + Botão Command Palette + FAB da Inbox) — Fase 2
+ * Componente de Navegação (Header + Dock Animada Desktop + Dock Mobile + Command Palette + FAB da Inbox + Pill de XP/Streak) — Fase 4
  */
 
 import { getState, subscribe } from '../store/store.js';
+import { computeLevelInfo, computeStreakStatus } from '../utils/domain.js';
 import { openCommandPalette } from './palette.js';
 import { openQuickInboxCaptureModal } from '../views/inbox.js';
 import { openShortcutsHelpModal } from '../utils/shortcuts.js';
+import { enableDockWave, enableMagneticButtons } from '../fx/effects.js';
 
 const NAV_ITEMS = [
   {
@@ -17,6 +19,27 @@ const NAV_ITEMS = [
     hash: '#/kanban',
     label: 'Kanban',
     icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="15" rx="1"/></svg>`
+  },
+  {
+    hash: '#/focus',
+    label: 'Foco',
+    icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 3h6"/></svg>`
+  },
+  {
+    hash: '#/galaxy',
+    label: 'Galáxia',
+    icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(30 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-30 12 12)"/></svg>`
+  },
+  {
+    hash: '#/graph',
+    label: 'Grafo',
+    icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><line x1="8.7" y1="7.5" x2="15.3" y2="7.5"/><line x1="7.5" y1="8.6" x2="10.5" y2="15.4"/><line x1="16.5" y1="8.6" x2="13.5" y2="15.4"/></svg>`
+  },
+  {
+    hash: '#/achievements',
+    label: 'Conquistas',
+    isGamification: true,
+    icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>`
   },
   {
     hash: '#/inbox',
@@ -34,8 +57,11 @@ const NAV_ITEMS = [
 let _header = null;
 let _dock = null;
 let _fab = null;
+let _gamificationPill = null;
 let _unsubscribeHash = null;
 let _unsubscribeStore = null;
+let _cleanupDockWave = null;
+let _cleanupFabMagnetic = null;
 
 export function renderNav(appRoot) {
   // ── HEADER ─────────────────────────────────
@@ -64,7 +90,7 @@ export function renderNav(appRoot) {
   for (const item of NAV_ITEMS) {
     const link = document.createElement('a');
     link.href = item.hash;
-    link.className = 'nav-link';
+    link.className = `nav-link${item.isGamification ? ' nav-gamification-item' : ''}`;
     link.setAttribute('aria-label', item.label);
     link.innerHTML = `
       ${item.icon}
@@ -74,9 +100,19 @@ export function renderNav(appRoot) {
     desktopNav.appendChild(link);
   }
 
-  // Ações do Header (Botão Command Palette visível em mobile/desktop + Ajuda + Rate Limit)
+  // Ações do Header (Pill de Gamificação + Botão Command Palette + Ajuda + Rate Limit)
   const headerActions = document.createElement('div');
   headerActions.className = 'header-actions';
+
+  _gamificationPill = document.createElement('a');
+  _gamificationPill.href = '#/achievements';
+  _gamificationPill.className = 'header-xp-pill tabular';
+  _gamificationPill.title = 'Ver Nível, XP, Streak e Conquistas';
+  _gamificationPill.innerHTML = `
+    <span class="xp-pill-lvl">Nv.1</span>
+    <span class="xp-pill-val">0 XP</span>
+    <span class="xp-pill-streak" title="Streak atual">🔥0d</span>
+  `;
 
   const paletteBtn = document.createElement('button');
   paletteBtn.type = 'button';
@@ -101,6 +137,7 @@ export function renderNav(appRoot) {
   rateLimitEl.id = 'rate-limit-indicator';
   rateLimitEl.style.display = 'none';
 
+  headerActions.appendChild(_gamificationPill);
   headerActions.appendChild(paletteBtn);
   headerActions.appendChild(helpBtn);
   headerActions.appendChild(rateLimitEl);
@@ -118,7 +155,7 @@ export function renderNav(appRoot) {
   for (const item of NAV_ITEMS) {
     const dockItem = document.createElement('a');
     dockItem.href = item.hash;
-    dockItem.className = 'dock-item';
+    dockItem.className = `dock-item${item.isGamification ? ' nav-gamification-item' : ''}`;
     dockItem.setAttribute('aria-label', item.label);
     dockItem.innerHTML = `
       <div class="dock-icon" aria-hidden="true" style="position:relative;">
@@ -146,10 +183,13 @@ export function renderNav(appRoot) {
   document.body.appendChild(_fab);
   document.body.appendChild(_dock);
 
+  _cleanupDockWave = enableDockWave(desktopNav);
+  _cleanupFabMagnetic = enableMagneticButtons(document.body);
+
   _unsubscribeHash = _listenToHash();
-  _unsubscribeStore = subscribe(() => _updateInboxBadges());
+  _unsubscribeStore = subscribe(() => _updateNavAndGamificationBadges());
   _updateActiveLinks();
-  _updateInboxBadges();
+  _updateNavAndGamificationBadges();
 }
 
 function _listenToHash() {
@@ -158,18 +198,44 @@ function _listenToHash() {
   return () => window.removeEventListener('hashchange', onHashChange);
 }
 
-function _updateInboxBadges() {
-  const state = getState();
-  const pendingCount = (state?.inbox || []).filter(i => !i.completed).length;
+function _updateNavAndGamificationBadges() {
+  try {
+    const state = getState();
+    const inboxList = Array.isArray(state?.inbox) ? state.inbox : [];
+    const pendingCount = inboxList.filter(i => !i.completed).length;
 
-  document.querySelectorAll('.nav-inbox-badge, .dock-inbox-badge').forEach(el => {
-    if (pendingCount > 0) {
-      el.style.display = 'inline-flex';
-      el.textContent = String(pendingCount);
-    } else {
-      el.style.display = 'none';
+    document.querySelectorAll('.nav-inbox-badge, .dock-inbox-badge').forEach(el => {
+      if (pendingCount > 0) {
+        el.style.display = 'inline-flex';
+        el.textContent = String(pendingCount);
+      } else {
+        el.style.display = 'none';
+      }
+    });
+
+    // Se gamificação estiver desligada nas Configurações, remove toda a UI de gamificação do header/nav
+    const gamificationOn = state?.config?.gamificationEnabled !== false;
+    document.querySelectorAll('.nav-gamification-item').forEach(el => {
+      el.style.display = gamificationOn ? '' : 'none';
+    });
+
+    if (_gamificationPill) {
+      if (!gamificationOn) {
+        _gamificationPill.style.display = 'none';
+      } else {
+        const levelInfo = computeLevelInfo(state?.gamification?.xp || 0);
+        const streak = computeStreakStatus(state);
+        _gamificationPill.style.display = 'inline-flex';
+        _gamificationPill.innerHTML = `
+          <span class="xp-pill-lvl">Nv.${levelInfo.level}</span>
+          <span class="xp-pill-val">${levelInfo.xp} XP</span>
+          <span class="xp-pill-streak" title="Streak atual">${streak.current > 0 ? `🔥${streak.current}d` : '🔥0d'}</span>
+        `;
+      }
     }
-  });
+  } catch (err) {
+    console.warn('[Nav] Erro ao atualizar badges de navegação:', err);
+  }
 }
 
 function _updateActiveLinks() {
@@ -188,8 +254,8 @@ function _updateActiveLinks() {
     const dockItems = _dock.querySelectorAll('.dock-item');
     dockItems.forEach(item => {
       const isActive = currentHash.startsWith(item.getAttribute('href'));
-      item.classList.toggle('is-active', isActive);
-      item.setAttribute('aria-current', isActive ? 'page' : 'false');
+      dockItem.classList.toggle('is-active', isActive);
+      dockItem.setAttribute('aria-current', isActive ? 'page' : 'false');
     });
   }
 }
@@ -226,10 +292,13 @@ export function updateRateLimitIndicator(rateLimit) {
 export function destroyNav() {
   if (_unsubscribeHash) _unsubscribeHash();
   if (_unsubscribeStore) _unsubscribeStore();
+  if (_cleanupDockWave) _cleanupDockWave();
+  if (_cleanupFabMagnetic) _cleanupFabMagnetic();
   _fab?.remove();
   _dock?.remove();
   _header?.remove();
   _fab = null;
   _header = null;
   _dock = null;
+  _gamificationPill = null;
 }
