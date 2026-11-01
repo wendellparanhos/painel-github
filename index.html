@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="description" content="Painel pessoal de projetos e repositórios do GitHub — wendellparanhos">
   <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#090d16">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://api.github.com https://generativelanguage.googleapis.com https://api.openai.com https://api.anthropic.com; media-src 'self' data: blob:;">
+
+  <!-- Manifest PWA -->
+  <link rel="manifest" href="manifest.webmanifest">
 
   <!-- Pré-carregamento de fonte -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -25,12 +30,13 @@
   <!-- Favicon emoji simples -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 
-  <!-- CSS — ordem importa: tokens → base → components → layout → views -->
-  <link rel="stylesheet" href="css/tokens.css?v=4.1">
-  <link rel="stylesheet" href="css/base.css?v=4.1">
-  <link rel="stylesheet" href="css/components.css?v=4.1">
-  <link rel="stylesheet" href="css/layout.css?v=4.1">
-  <link rel="stylesheet" href="css/views.css?v=4.1">
+  <!-- CSS — ordem importa: tokens → base → components → layout → views → print -->
+  <link rel="stylesheet" href="css/tokens.css?v=6.0">
+  <link rel="stylesheet" href="css/base.css?v=6.0">
+  <link rel="stylesheet" href="css/components.css?v=6.0">
+  <link rel="stylesheet" href="css/layout.css?v=6.0">
+  <link rel="stylesheet" href="css/views.css?v=6.0">
+  <link rel="stylesheet" href="css/print.css?v=6.0" media="print">
 
   <!-- Estilos adicionais in-line mínimos: utilitários e markdown extras -->
   <style>
@@ -77,6 +83,7 @@
     .home-view,
     .project-view,
     .kanban-view,
+    .reports-view,
     .galaxy-view,
     .graph-view,
     .inbox-view,
@@ -88,6 +95,7 @@
       .home-view,
       .project-view,
       .kanban-view,
+      .reports-view,
       .galaxy-view,
       .graph-view,
       .inbox-view,
@@ -168,7 +176,7 @@
   <div id="app-root"></div>
 
   <!-- Bootstrap da aplicação (ES Module) -->
-  <script type="module" src="js/app.js?v=4.1"></script>
+  <script type="module" src="js/app.js?v=5.0"></script>
 
   <!-- Remove o loader assim que o DOM estiver pronto -->
   <script>

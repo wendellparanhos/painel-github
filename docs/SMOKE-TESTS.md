@@ -132,3 +132,60 @@ Este documento lista os testes essenciais que devem ser executados ao final de c
 - [x] Mascote SVG opcional (`CodeBuddy`) que reage ao dia (visor em foco, comemoração em dia ativo, ou cochilo tranquilo quando ausente por dias **sem gerar culpa por inatividade**), puramente cosmético e desligável
 - [x] Desligar a gamificação nas Configurações (`gamificationEnabled: false`) oculta 100% da interface de gamificação (pill de XP/streak no header, link de Conquistas, mascote, toasts de XP e celebrações) sem afetar o restante do app
 - [x] Notificações locais (`Notification` API) para fim de foco, prazos do dia e resumo diário opcional: permissão solicitada **somente após ação contextual** com modal explicando o benefício; degradação graciosa quando `Notification` não existir ou permissão for negada, sem bloquear o timer; documentação explícita de que notificações locais dependem do navegador/aba estar ativo
+
+---
+
+## 13. Fase 5 — Dados Técnicos GitHub, Fila Concorrente e Princípio "Indisponível Não É Falha"
+- [x] Sub-requisições técnicas do GitHub (Releases, GitHub Actions, README e Licença) executadas **estritamente sob demanda** ao abrir a página do projeto ou por ação explícita do usuário, nunca disparadas em lote para todos os repositórios na inicialização
+- [x] Fila interna com limite de concorrência (`MAX_CONCURRENT_SUBREQUESTS = 2`) para sub-requisições secundárias, evitando esgotamento de conexões ou rajadas de rate-limit
+- [x] Cache em memória e persistência em `state.githubCache.repoTech[id]` com controle de erro isolado por endpoint: falha em um endpoint (ex.: releases 404) não impede o carregamento dos demais (Actions ou README)
+- [x] **Princípio "Indisponível não é falha"**: se o GitHub Actions não foi consultado, se o token não possui permissão (`permission_denied`) ou se a API retornou rate limit (`rate_limit`) ou offline, o status do build é exibido como `Indisponível` (⚪) ou `Sem permissão` (🔒), **NUNCA como build quebrado ("falhou") nem zero falso**
+- [x] Status do build de CI exibido no card do projeto e no cabeçalho da página de detalhe com ícone e texto acessível: Verde (sucesso), Vermelho (falha confirmada apenas quando `conclusion === 'failure'`), Amarelo (em andamento ou cancelado), Cinza/Neutro (sem workflows ou indisponível)
+- [x] Timeline do projeto enriquecida com eventos remotos de Releases (`Remoto · Release GitHub`) e execuções de GitHub Actions (`Remoto · Build Actions`) mesclados aos marcos locais
+
+---
+
+## 14. Fase 5 — Saúde Heurística (v1.0.0), Detector de Abandono, Relatórios e IA Opcional
+- [x] **Saúde do Projeto (`computeProjectHealth`)**: função pura, determinística e versionada (`HEALTH_FORMULA_VERSION = '1.0.0'`) calculando pontuação de 0 a 100 com fatores documentados (Atividade Recente 25, Tarefas Atrasadas 25, Issues 15, README 8, Licença 7, CI 12, Releases 8)
+- [x] Descrita como indicador heurístico do painel (não medida de qualidade de código); normaliza pesos apenas entre fatores disponíveis quando endpoints falharem; se a cobertura for `< 50%`, confiança é reduzida para `baixa` e o projeto é marcado como não comparável (`isComparable: false`) com anel tracejado
+- [x] Anel de saúde visual nos cartões da Home, badge na página do projeto, ordenação por saúde e auréola/brilho correspondente na Galáxia (`#/galaxy`), com modal interativo de explicação da fórmula acessível por clique no anel
+- [x] **Detector de Abandono (`evaluateProjectAbandonment`)**: avalia projetos ativos sem atividade recente acima do limite configurado (padrão 45 dias, cooldown de 14 dias); **NUNCA altera o status sozinho** e oferece ações conscientes (retomar, pausar, arquivar, adiar 14 dias, isentar `exemptFromAbandonment` ou ignorar alerta)
+- [x] Alertas consolidados na Home combinando tarefas vencidas, builds com falha confirmada (apenas `available` + `failure`) e projetos parados pelo detector de abandono
+- [x] **Relatório Semanal (`#/reports`)**: KPIs comparando os últimos 7 dias com a janela anterior de 7 dias (tarefas concluídas, tempo de foco, commits públicos e conquistas), gráfico de ritmo diário e síntese executiva textual honesta
+- [x] **Portões Estritos de Amostra**: Linha do tempo de linguagens (≥ 3 repositórios em ≥ 2 semestres) e Radar de habilidades (≥ 3 linguagens distintas); quando a amostra é insuficiente, exibe caixa explicativa sem quebrar o layout; o radar traz aviso metodológico explícito de que não mede proficiência técnica real
+- [x] **Resumo com IA Opcional (`js/services/ai.js`)**: desligado por padrão (`aiEnabled: false`, `aiConsentGiven: false`); opt-in com pré-visualização completa do payload JSON e endpoint antes do envio
+- [x] **Allowlist Estrita de Privacidade**: payload contém apenas metadados públicos e títulos curtos de commits/PRs/issues; notas privadas, tarefas pessoais e tokens são filtrados e auditados contra vazamento; chave de API mantida apenas no aparelho (`panel_ai_api_key_v1`) e excluída do backup JSON
+- [x] Resposta da IA tratada como **texto não confiável** (sanitizada contra injeção de HTML e inserida estritamente via `textContent`); tratamento robusto de erros (sem consentimento, chave ausente, falta de evidência mínima para não alucinar, quota HTTP 429, timeout e JSON corrompido); botão para excluir o resumo gerado a qualquer momento
+- [x] Migração automática de esquema de dados `v3 -> v4` executada com sucesso e com backup preventivo antes da alteração
+
+
+---
+
+## 15. Fase 6 — Modo Portfólio Estático, Cartões Canvas e Relatórios
+- [x] **Exportação de Portfólio HTML Estático (`js/services/portfolio.js`)**: gera página autônoma e completa com CSS embutido, responsiva, com visual profissional e zero scripts maliciosos ou dependências externas
+- [x] **Allowlist Estrita & Teste com Dados-Canário**: exportação inclui apenas metadados públicos permitidos (`PORTFOLIO_ALLOWLIST_FIELDS`) e campos selecionados pelo usuário; **zero vazamento** de notas privadas (`note`), tarefas pessoais (`tasks`), tokens (`ghp_*`) ou credenciais, auditado e validado por teste automatizado
+- [x] **Seleção de Projetos e Metadados**: modal com checkboxes para escolher quais projetos exportar e quais informações exibir (linguagem, estrelas, forks, links do GitHub/demo e status)
+- [x] **Pré-visualização e Download**: opção de pré-visualizar o portfólio em nova aba (`blob:text/html`) e fazer o download direto de `portfolio.html`
+- [x] **Cartões Compartilháveis em Canvas 2D (`js/services/share-card.js`)**: renderização de imagens em 1200×630px para redes sociais com alta definição (2x scaling)
+- [x] **Cartão Resumo da Semana**: 4 KPIs principais (tarefas concluídas, tempo de foco, commits públicos e conquistas da semana), indicador de ritmo e identidade visual elegante
+- [x] **Cartão Destaque de Projeto**: capa personalizada, anel de saúde visual v1.0.0 com score e confiabilidade, métricas públicas e tópicos/linguagens
+- [x] **Exportação de Imagens**: botões para download em formato PNG de alta resolução e cópia direta para o clipboard do sistema operacional via `navigator.clipboard.write` com feedback visual em toast
+- [x] **Relatório em Markdown (`.md`)**: download do relatório semanal com métricas, resumo executivo, tabela de projetos ativos e tarefas da semana estruturadas
+- [x] **Folha de Estilos para Impressão (`css/print.css`)**: `@media print` otimizado para formato A4 que oculta cabeçalho, dock, FAB, modais e botões interativos, quebra páginas de forma limpa (`break-inside: avoid;`) e converte o layout para contraste adequado em papel
+
+---
+
+## 16. Fase 6 — Sincronização Gist, PWA Offline, Temas e Deploy
+- [x] **Sincronização em Nuvem Opcional via Gist (`js/services/sync.js`)**: 100% desligada por padrão, exige consentimento explícito e token pessoal do GitHub com escopo `gist`
+- [x] **Segurança de Credenciais no Sync**: token mantido exclusivamente no dispositivo (`panel_gist_sync_token_v1`) e nunca trafegado nem gravado dentro do arquivo de sincronização `panel-sync-data.json`
+- [x] **Reconciliação por Registro e Tombstones**: mesclagem inteligente baseada em timestamp (`updatedAt`) para cada projeto; exclusões propagadas com tombstones (`_deleted: true`), sem "última escrita vence" às cegas
+- [x] **Detecção de Conflitos e Backup Preventivo**: backup automático salvo no `localStorage` antes de qualquer mesclagem remota; detecção de escritas simultâneas por múltiplos dispositivos
+- [x] **PWA & Manifesto (`manifest.webmanifest`)**: configurado para modo `standalone`, nome e descrição em português, theme-color `#090d16`, atalhos de aplicativo e ícones maskable SVG
+- [x] **Service Worker e Cache Versionado (`sw.js`)**: cache versionado (`panel-cache-v6.0`) com pré-cache dos 44 assets da aplicação e limpeza automática de versões obsoletas no `activate`
+- [x] **Estratégia de Cache Diferenciada**: *Stale-While-Revalidate* para assets locais do painel (HTML/CSS/JS/SVG) e *Network-First / Network-Only* para requisições da API do GitHub, nunca mantendo dados do GitHub em cache-first cego
+- [x] **Indicador de Conectividade em Tempo Real**: pill de status no cabeçalho com transição suave entre `Online` (verde) e `Offline` (âmbar), com toasts informativos em mudanças de estado
+- [x] **Atualização Não Destrutiva**: notificação discreta quando uma nova versão do Service Worker estiver instalada aguardando ativação (`skipWaiting`)
+- [x] **4 Novos Temas Acessíveis (`css/tokens.css`)**: `cyber` (cyberpunk neon), `aurora` (verde místico e ciano), `vaporwave` (pastéis roxo e rosa) e `mono` (minimalista preto e branco de alto contraste), todos em conformidade com critérios WCAG AA
+- [x] **Onboarding Interativo (`js/components/onboarding.js`)**: tour guiado de 3 passos destacando a Bento Grid, a Paleta de Comandos (`Ctrl+K`) e a Inbox Rápida (`C`), com disparo inteligente na primeira visita e botão nas Configurações
+- [x] **Empty States Ilustrados (`js/components/empty-state.js`)**: ilustrações temáticas em SVG com mensagem amigável e botão de ação primária para busca sem resultados, repositórios vazios e inbox limpa
+- [x] **Compatibilidade com GitHub Pages e CSP Estrita**: `Content-Security-Policy` declarada no `<head>` sem diretivas inseguras e compatível com hospedagem estática em subdiretório (`https://wendellparanhos.github.io/painel-github/`)

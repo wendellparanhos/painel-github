@@ -1,0 +1,137 @@
+/**
+ * Folha de Estilos de Impressão (Print & PDF) — Fase 6.
+ * Otimizada para documentação física ou exportação limpa em PDF via window.print().
+ */
+
+@media print {
+  /* 1. Reset para papel branco e texto escuro de alto contraste */
+  *,
+  *::before,
+  *::after {
+    background: transparent !important;
+    color: #111827 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+    font-size: 11pt !important;
+    line-height: 1.5 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* 2. Oculta todos os elementos de navegação, controles interativos e efeitos de tela */
+  header.app-header,
+  nav.dock,
+  .fab-inbox,
+  .modal-backdrop,
+  .command-palette-backdrop,
+  .toast-container,
+  .aurora-backdrop,
+  canvas,
+  button,
+  .btn,
+  .btn-primary,
+  .btn-ghost,
+  .btn-secondary,
+  .btn-danger,
+  .search-input,
+  .filter-bar,
+  .action-buttons,
+  .reports-actions-bar,
+  .header-actions,
+  #rate-limit-indicator,
+  .dock-item,
+  .tab-nav {
+    display: none !important;
+  }
+
+  /* 3. Ajuste do Container Principal */
+  #main-content,
+  .page-container,
+  .container {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0.5cm !important;
+    margin: 0 !important;
+  }
+
+  /* 4. Estrutura de Cartões e Widgets para Impressão */
+  .card,
+  .bento-widget,
+  section {
+    border: 1px solid #d1d5db !important;
+    border-radius: 6px !important;
+    margin-bottom: 12pt !important;
+    padding: 10pt !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* 5. Títulos e Subtítulos Nítidos */
+  h1, h2, h3, h4 {
+    color: #0f172a !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    margin-bottom: 6pt !important;
+  }
+
+  h1 { font-size: 18pt !important; }
+  h2 { font-size: 14pt !important; }
+  h3 { font-size: 12pt !important; }
+
+  /* 6. Grids adaptados para fluxo vertical legível em papel A4 */
+  .reports-kpi-grid,
+  .bento-grid,
+  .project-grid {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8pt !important;
+  }
+
+  .reports-kpi-grid > * {
+    flex: 1 1 45% !important;
+  }
+
+  /* 7. Gráficos Vetoriais SVG */
+  svg {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  svg text {
+    fill: #1f2937 !important;
+  }
+
+  svg rect,
+  svg circle,
+  svg polygon {
+    opacity: 0.85 !important;
+  }
+
+  /* 8. Cabeçalho de Impressão */
+  body::before {
+    content: "PAINEL GITHUB · RELATÓRIO EXECUTIVO OFICIAL (EMITIDO VIA DOMÍNIO LOCAL)";
+    display: block;
+    font-size: 9pt;
+    font-weight: bold;
+    color: #6b7280 !important;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 4pt;
+    margin-bottom: 14pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* 9. Rodapé de Impressão */
+  @page {
+    margin: 1.5cm;
+    size: auto;
+  }
+}

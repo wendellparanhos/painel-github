@@ -18,6 +18,7 @@ import { showToast } from './components/toast.js';
 import { initShortcuts } from './utils/shortcuts.js';
 import { initFeedbackListeners } from './services/feedback.js';
 import { checkDailyNotificationsAndReminders } from './services/notifications.js';
+import { startOnboardingTour } from './components/onboarding.js';
 
 import { HomeView } from './views/home.js';
 import { ProjectView } from './views/project.js';
@@ -95,6 +96,10 @@ async function boot() {
       loader: () => import('./views/focus.js')
     },
     {
+      pattern: '#/reports',
+      loader: () => import('./views/reports.js')
+    },
+    {
       pattern: '#/achievements',
       loader: () => import('./views/achievements.js')
     },
@@ -136,6 +141,14 @@ async function boot() {
 
   // 11. Monitora eventos do sistema
   _setupSystemListeners();
+
+  // 12. Registra Service Worker (PWA & Offline)
+  _registerServiceWorker();
+
+  // 13. Inicia tour de apresentação em primeiro acesso (não intrusivo)
+  setTimeout(() => {
+    startOnboardingTour(false);
+  }, 2000);
 
   // Remove loader inicial imediatamente após montar a view
   const loader = document.getElementById('initial-loader');
@@ -192,6 +205,44 @@ function _setupSystemListeners() {
     if (theme) document.documentElement.setAttribute('data-theme', theme);
     if (accent) document.documentElement.setAttribute('data-accent', accent);
   });
+
+  window.addEventListener('online', () => {
+    showToast('Conexão restabelecida. Modo online ativo.', { type: 'success', duration: 3000 });
+  });
+
+  window.addEventListener('offline', () => {
+    showToast('Você está offline. Seus dados locais continuam acessíveis e editáveis.', { type: 'neutral', duration: 4500 });
+  });
+}
+
+function _registerServiceWorker() {
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').then((reg) => {
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              showToast('Nova versão disponível do Painel!', {
+                type: 'info',
+                duration: 12000,
+                action: {
+                  label: 'Atualizar',
+                  fn: () => {
+                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                    window.location.reload();
+                  }
+                }
+              });
+            }
+          });
+        });
+      }).catch((err) => {
+        console.warn('[SW] Aviso no registro do Service Worker:', err);
+      });
+    });
+  }
 }
 
 // ─────────────────────────────────────────────

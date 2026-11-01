@@ -311,6 +311,10 @@ function _createDefaultProject(id, name = '') {
     customColor: '',
     lastOpenedAt: null,
     isLocalOnly: false,
+    exemptFromAbandonment: false,
+    abandonmentIgnored: false,
+    abandonmentSnoozedUntil: null,
+    aiSummary: null,
     tasks: [],
     note: { content: '', updatedAt: null },
     customLinks: [],
@@ -566,8 +570,84 @@ function reducer(state, action) {
           ...state.githubCache,
           repos: action.payload.repos ?? state.githubCache.repos ?? [],
           fetchedAt: action.payload.fetchedAt ?? state.githubCache.fetchedAt ?? null,
-          rateLimit: action.payload.rateLimit || state.githubCache.rateLimit || null
+          rateLimit: action.payload.rateLimit || state.githubCache.rateLimit || null,
+          repoTech: action.payload.clearTech ? {} : (state.githubCache?.repoTech || {})
         }
+      };
+    }
+
+    case 'GITHUB_REPO_TECH_UPDATE': {
+      const { repoId, tech } = action.payload || {};
+      if (!repoId || !tech || typeof tech !== 'object') return state;
+      const id = String(repoId);
+      const currentRepoTech = state.githubCache?.repoTech || {};
+      const prevEntry = currentRepoTech[id] || {};
+      return {
+        ...state,
+        githubCache: {
+          ...state.githubCache,
+          repoTech: {
+            ...currentRepoTech,
+            [id]: {
+              ...prevEntry,
+              ...tech,
+              updatedAt: new Date().toISOString()
+            }
+          }
+        }
+      };
+    }
+
+    // ── Fase 5: Detector de Abandono (Nunca altera status sozinho!) ──
+    case 'PROJECT_ABANDONMENT_SET': {
+      const { repoId, exemptFromAbandonment, abandonmentIgnored, abandonmentSnoozedUntil } = action.payload || {};
+      if (!repoId) return state;
+      const id = String(repoId);
+      const proj = _cloneProject(state, id);
+      if (exemptFromAbandonment !== undefined) {
+        proj.exemptFromAbandonment = Boolean(exemptFromAbandonment);
+      }
+      if (abandonmentIgnored !== undefined) {
+        proj.abandonmentIgnored = Boolean(abandonmentIgnored);
+      }
+      if (abandonmentSnoozedUntil !== undefined) {
+        proj.abandonmentSnoozedUntil = abandonmentSnoozedUntil || null;
+      }
+      return {
+        ...state,
+        projects: { ...state.projects, [id]: proj }
+      };
+    }
+
+    // ── Fase 5: Resumo com IA (Salvar / Excluir) ──
+    case 'PROJECT_AI_SUMMARY_SAVE': {
+      const { repoId, summary } = action.payload || {};
+      if (!repoId || !summary) return state;
+      const id = String(repoId);
+      const proj = _cloneProject(state, id);
+      proj.aiSummary = {
+        text: String(summary.text || ''),
+        generatedAt: summary.generatedAt || new Date().toISOString(),
+        provider: String(summary.provider || 'IA'),
+        model: String(summary.model || ''),
+        sources: Array.isArray(summary.sources) ? summary.sources.map(String) : [],
+        payloadBytes: Number(summary.payloadBytes) || 0
+      };
+      return {
+        ...state,
+        projects: { ...state.projects, [id]: proj }
+      };
+    }
+
+    case 'PROJECT_AI_SUMMARY_DELETE': {
+      const { repoId } = action.payload || {};
+      if (!repoId) return state;
+      const id = String(repoId);
+      const proj = _cloneProject(state, id);
+      proj.aiSummary = null;
+      return {
+        ...state,
+        projects: { ...state.projects, [id]: proj }
       };
     }
 
@@ -1310,7 +1390,7 @@ function reducer(state, action) {
       return {
         ...fresh,
         config: state.config,
-        githubCache: { repos: [], fetchedAt: null, events: [], eventsFetchedAt: null, rateLimit: null }
+        githubCache: { repos: [], fetchedAt: null, events: [], eventsFetchedAt: null, rateLimit: null, repoTech: {} }
       };
     }
 

@@ -12,6 +12,7 @@ import { getState, dispatch, subscribe, undo, canUndo } from '../store/store.js'
 import { getMergedProjects, paginateItems } from '../utils/domain.js';
 import { formatRelativeTime } from '../utils/formatters.js';
 import { openModal } from '../components/modal.js';
+import { renderEmptyState } from '../components/empty-state.js';
 import { showToast } from '../components/toast.js';
 import { burstParticles } from '../fx/effects.js';
 import { navigate } from '../router.js';
@@ -231,13 +232,13 @@ function _renderListOnly() {
   listWrap.innerHTML = '';
 
   if (filtered.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'card';
-    empty.style.cssText = 'text-align:center;padding:3rem 1rem;color:var(--text-muted);';
-    empty.innerHTML = `
-      <div style="font-size:2.2rem;margin-bottom:0.5rem;">✨</div>
-      <p>Sua Inbox está limpa para este filtro.</p>
-    `;
+    const empty = renderEmptyState({
+      illustration: 'inbox',
+      title: 'Inbox limpa e organizada',
+      description: 'Nenhuma anotação pendente para este filtro. Use o botão + Inbox ou a tecla C para capturar ideias.',
+      actionLabel: '+ Nova Anotação (C)',
+      onAction: () => openQuickInboxCaptureModal()
+    });
     listWrap.appendChild(empty);
     return;
   }

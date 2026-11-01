@@ -9,7 +9,7 @@
 
 export const STORAGE_KEY = 'panel_state_v1';
 export const BACKUP_KEY = 'panel_backup';
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;
 
 // ─────────────────────────────────────────────
 // ESTADO INICIAL (fallback caso não exista dado)
@@ -35,7 +35,16 @@ export function createInitialState() {
       weeklyFocusGoalMinutes: 120,
       focusDurationMinutes: 25,
       shortBreakMinutes: 5,
-      longBreakMinutes: 15
+      longBreakMinutes: 15,
+      // Fase 5: Detector de Abandono e Resumo Opcional com IA (desligado por padrão)
+      abandonmentThresholdDays: 45,
+      abandonmentCooldownDays: 14,
+      aiEnabled: false,
+      aiConsentGiven: false,
+      aiConsentAt: null,
+      aiProvider: 'gemini',    // 'gemini' | 'openai' | 'anthropic' | 'custom_proxy'
+      aiModel: 'gemini-2.5-flash',
+      aiCustomEndpoint: ''
     },
     projects: {},
     inbox: [],
@@ -78,7 +87,8 @@ export function createInitialState() {
       fetchedAt: null,
       events: [],
       eventsFetchedAt: null,
-      rateLimit: null
+      rateLimit: null,
+      repoTech: {}               // Fase 5: cache isolado de dados técnicos sob demanda por repoId
     }
   };
 }
@@ -185,6 +195,38 @@ const migrations = {
       };
     }
     return state;
+  },
+  4: (state) => {
+    state.version = 4;
+    const defaults = createInitialState();
+    state.config = {
+      ...defaults.config,
+      ...state.config,
+      abandonmentThresholdDays: Math.max(7, Number(state.config?.abandonmentThresholdDays) || 45),
+      abandonmentCooldownDays: Math.max(1, Number(state.config?.abandonmentCooldownDays) || 14),
+      aiEnabled: Boolean(state.config?.aiEnabled),
+      aiConsentGiven: Boolean(state.config?.aiConsentGiven),
+      aiConsentAt: state.config?.aiConsentAt || null,
+      aiProvider: state.config?.aiProvider || 'gemini',
+      aiModel: state.config?.aiModel || 'gemini-2.5-flash',
+      aiCustomEndpoint: state.config?.aiCustomEndpoint || ''
+    };
+    if (state.projects && typeof state.projects === 'object') {
+      for (const proj of Object.values(state.projects)) {
+        proj.exemptFromAbandonment = Boolean(proj.exemptFromAbandonment);
+        proj.abandonmentIgnored = Boolean(proj.abandonmentIgnored);
+        proj.abandonmentSnoozedUntil = proj.abandonmentSnoozedUntil || null;
+        proj.aiSummary = proj.aiSummary && typeof proj.aiSummary === 'object' ? proj.aiSummary : null;
+      }
+    }
+    if (!state.githubCache || typeof state.githubCache !== 'object') {
+      state.githubCache = defaults.githubCache;
+    } else {
+      state.githubCache.repoTech = state.githubCache.repoTech && typeof state.githubCache.repoTech === 'object'
+        ? state.githubCache.repoTech
+        : {};
+    }
+    return state;
   }
 };
 
@@ -252,6 +294,10 @@ function mergeWithDefaults(state) {
       customColor: '',
       lastOpenedAt: null,
       isLocalOnly: false,
+      exemptFromAbandonment: false,
+      abandonmentIgnored: false,
+      abandonmentSnoozedUntil: null,
+      aiSummary: null,
       note: { content: '', updatedAt: null },
       customLinks: [],
       milestones: [],
@@ -268,7 +314,10 @@ function mergeWithDefaults(state) {
       ...defaults.githubCache,
       ...state.githubCache,
       repos: Array.isArray(state.githubCache.repos) ? state.githubCache.repos : [],
-      events: Array.isArray(state.githubCache.events) ? state.githubCache.events : []
+      events: Array.isArray(state.githubCache.events) ? state.githubCache.events : [],
+      repoTech: state.githubCache.repoTech && typeof state.githubCache.repoTech === 'object'
+        ? state.githubCache.repoTech
+        : {}
     };
   }
 
@@ -384,7 +433,10 @@ function _persistState(state) {
 
       // Tenta remover o cache do GitHub primeiro (dados recuperáveis) para liberar espaço
       try {
-        const fallbackState = { ...state, githubCache: { repos: [], fetchedAt: null, rateLimit: null } };
+        const fallbackState = {
+          ...state,
+          githubCache: { repos: [], fetchedAt: null, events: [], eventsFetchedAt: null, rateLimit: null, repoTech: {} }
+        };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(fallbackState));
         console.warn('[Storage] Cache do GitHub removido para liberar quota. Dados pessoais preservados.');
 
@@ -426,7 +478,7 @@ function backupRaw(rawString) {
 // EXPORT / IMPORT JSON
 // ─────────────────────────────────────────────
 export function exportJSON(state) {
-  // Exporta apenas dados pessoais (sem o cache do GitHub)
+  // Exporta apenas dados pessoais (sem o cache do GitHub e sem nenhuma chave de API de IA)
   const exportData = {
     version: state.version,
     exportedAt: new Date().toISOString(),
@@ -499,7 +551,7 @@ export function importJSON(jsonString, currentState) {
   // Mescla com estado atual — mantém githubCache atual
   const newState = {
     ...merged,
-    githubCache: currentState?.githubCache ?? merged.githubCache // Preserva o cache do GitHub atual
+    githubCache: currentState?.githubCache ?? merged.githubCache
   };
 
   // Retorna preview antes de confirmar
@@ -524,7 +576,8 @@ export function clearGitHubCache(currentState) {
       fetchedAt: null,
       events: [],
       eventsFetchedAt: null,
-      rateLimit: null
+      rateLimit: null,
+      repoTech: {}
     }
   };
 }

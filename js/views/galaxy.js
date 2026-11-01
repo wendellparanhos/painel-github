@@ -14,8 +14,14 @@
  */
 
 import { getState, dispatch, subscribe } from '../store/store.js';
-import { getMergedProjects, filterAndSortProjects, STATUS_ORDER } from '../utils/domain.js';
+import { getMergedProjects, filterAndSortProjects, STATUS_ORDER, HEALTH_FORMULA_VERSION } from '../utils/domain.js';
 import { getLangColor } from '../services/github.js';
+import {
+  renderHealthRingBadge,
+  renderBuildStatusBadge,
+  openHealthFormulaModal,
+  getHealthVisualMeta
+} from '../components/charts.js';
 import {
   setupAdaptiveCanvas,
   addFrameListener,
@@ -119,7 +125,7 @@ function _render() {
       <div class="section-eyebrow">🌌 Visualização Espacial · Canvas 2D</div>
       <h1 class="home-title" style="font-size:var(--text-2xl);">Galáxia de Projetos</h1>
       <p class="home-subtitle" style="font-size:var(--text-sm);">
-        Cada repositório é um astro agrupado em órbitas por linguagem. Tamanho = atividade recente + estrelas; Cor = status; Brilho = saúde simples (atividade nos últimos 30d e tarefas em dia).
+        Cada repositório é um astro agrupado em órbitas por linguagem. Tamanho = atividade recente + estrelas; Cor = status; Brilho = Saúde Heurística (0–100 · v${_escape(HEALTH_FORMULA_VERSION)}).
       </p>
     </div>
   `;
@@ -199,7 +205,7 @@ function _render() {
   toolbar.appendChild(searchInput);
   toolbar.appendChild(btnGroup);
 
-  // Legenda explícita de métricas (Cor, Tamanho, Brilho)
+  // Legenda explícita de métricas (Cor, Tamanho, Brilho de Saúde Fase 5)
   const legendBar = document.createElement('div');
   legendBar.className = 'viz-legend-bar card';
   legendBar.innerHTML = `
@@ -212,12 +218,19 @@ function _render() {
         </span>
       `).join('')}
     </div>
-    <div class="viz-legend-group">
+    <div class="viz-legend-group" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <span><strong>Tamanho:</strong> Atividade recente + tarefas + ⭐</span>
       <span>·</span>
-      <span><strong>Halo brilhante:</strong> Ativo (&lt;30d) e sem tarefas atrasadas</span>
+      <span><strong>Brilho (Halo):</strong> Saúde Heurística (0–100) · tracejado quando cobertura &lt; 50%</span>
+      <button type="button" class="btn btn-ghost btn-sm" id="galaxy-open-formula-btn" style="padding:2px 8px;min-height:24px;font-size:11px;">
+        📐 Ver fórmula (v${_escape(HEALTH_FORMULA_VERSION)})
+      </button>
     </div>
   `;
+  legendBar.querySelector('#galaxy-open-formula-btn')?.addEventListener('click', () => {
+    const star = _stars.find(s => s.project.repoId === _selectedRepoId) || _stars[0];
+    openHealthFormulaModal(star?.project || null, star?.project?.health || null);
+  });
 
   // Área principal: Canvas (ou Lista Acessível) + Painel de Resumo lateral
   const stageGrid = document.createElement('div');
@@ -303,8 +316,9 @@ function _recomputeStars() {
       const starsScore = Math.min(4, Math.log2((proj.stars || 0) + 1));
       const size = 6.5 + recencyScore + tasksScore * 0.7 + starsScore * 0.8;
 
-      // Saúde simples para o brilho: ativo nos últimos 30 dias e sem tarefas atrasadas
-      const isHealthyActive = daysSincePush <= 30 && proj.overdueTasksCount === 0;
+      // Saúde Heurística (0–100) da Fase 5 substitui a métrica simples da Fase 3
+      const health = proj.health || { score: 50, confidence: 'baixa', isComparable: false, coveragePct: 0 };
+      const healthMeta = getHealthVisualMeta(health);
 
       _stars.push({
         project: proj,
@@ -316,7 +330,8 @@ function _recomputeStars() {
         size,
         color: STATUS_HEX[proj.status] || '#8b5cf6',
         langColor,
-        isHealthyActive,
+        health,
+        healthMeta,
         daysSincePush: Math.round(daysSincePush)
       });
     });
@@ -515,16 +530,31 @@ function _drawOnce() {
 
     ctx.globalAlpha = isMatched ? 1 : 0.2;
 
-    // Halo de brilho para projetos ativos e saudáveis ou selecionados
-    if (s.isHealthyActive || isSelected) {
-      const haloRadius = s.size * (isSelected ? 2.4 : 1.8);
+    // Halo de brilho proporcional à Saúde Heurística (Fase 5) ou seleção
+    const hScore = typeof s.health?.score === 'number' ? s.health.score : 0;
+    const isComparable = Boolean(s.health?.isComparable);
+
+    if ((isComparable && hScore >= 50) || isSelected) {
+      const intensityFactor = isSelected ? 2.5 : (1.35 + (hScore / 100) * 0.95);
+      const haloRadius = s.size * intensityFactor;
+      const haloColor = s.healthMeta?.color || s.color;
       const halo = ctx.createRadialGradient(s.x, s.y, s.size * 0.3, s.x, s.y, haloRadius);
-      halo.addColorStop(0, `${s.color}66`);
-      halo.addColorStop(1, `${s.color}00`);
+      halo.addColorStop(0, `${haloColor}77`);
+      halo.addColorStop(1, `${haloColor}00`);
       ctx.fillStyle = halo;
       ctx.beginPath();
       ctx.arc(s.x, s.y, haloRadius, 0, Math.PI * 2);
       ctx.fill();
+    } else if (!isComparable) {
+      // Cobertura baixa (< 50%): anel tracejado discreto para indicar baixa confiança
+      ctx.save();
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+      ctx.lineWidth = 1.2 / _cam.zoom;
+      ctx.setLineDash([2.5 / _cam.zoom, 2.5 / _cam.zoom]);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.size + 3 / _cam.zoom, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
     }
 
     // Corpo do astro
@@ -573,20 +603,29 @@ function _updateDetailPanel() {
     <h2 style="font-size:var(--text-lg);font-weight:700;margin:4px 0 8px;">
       ${p.customIcon ? p.customIcon + ' ' : ''}${_escape(p.name)}
     </h2>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+    <div id="galaxy-detail-badges" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
       <span class="badge badge-${cls}"><span class="badge-dot"></span>${p.status}</span>
       <span class="widget-origin-tag">${_escape(p.language || 'Sem linguagem')}</span>
     </div>
     <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:12px;">
       ${_escape(p.description || 'Sem descrição cadastrada.')}
     </p>
+    <div id="galaxy-detail-health-slot" style="margin-bottom:12px;"></div>
     <div class="viz-metrics-list">
-      <div><span>Saúde simples:</span> <strong>${star.isHealthyActive ? '✨ Ativo e em dia' : '🌙 Estável / Sem push recente'}</strong></div>
+      <div><span>Saúde heurística:</span> <strong class="tabular">${p.health?.score ?? 'N/D'}/100 (Conf. ${_escape(p.health?.confidence || 'baixa')} · ${p.health?.coveragePct || 0}%)</strong></div>
       <div><span>Último push:</span> <strong>${p.pushedAt ? formatRelativeTime(p.pushedAt) : '—'}</strong></div>
       <div><span>Tarefas abertas:</span> <strong class="tabular">${p.openTasksCount} (${p.overdueTasksCount} atrasada)</strong></div>
       <div><span>Estrelas:</span> <strong class="tabular">⭐ ${p.stars}</strong></div>
     </div>
   `;
+
+  const healthSlot = panel.querySelector('#galaxy-detail-health-slot');
+  if (healthSlot) {
+    healthSlot.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
+    healthSlot.appendChild(renderHealthRingBadge(p.health, { size: 40, showLabel: true, project: p }));
+    const buildBadge = renderBuildStatusBadge(p.tech?.actions, { compact: true });
+    if (buildBadge) healthSlot.appendChild(buildBadge);
+  }
 
   // Seletor rápido de status + botão abrir
   const controls = document.createElement('div');
@@ -658,7 +697,7 @@ function _renderAccessibleList() {
         <span class="widget-origin-tag">${_escape(p.language || 'Outros')}</span>
       </div>
       <div style="font-size:var(--text-xs);color:var(--text-secondary);">
-        Status: ${p.status} · Tarefas: ${p.doneTasksCount}/${p.tasks.length} · ${s.isHealthyActive ? '✨ Ativo (<30d)' : '🌙 Estável'}
+        Status: ${p.status} · Tarefas: ${p.doneTasksCount}/${p.tasks.length} · Saúde: <strong class="tabular">${p.health?.score ?? 'N/D'}/100</strong> (Conf. ${_escape(p.health?.confidence || 'baixa')})
       </div>
     `;
     row.addEventListener('click', () => {

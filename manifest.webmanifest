@@ -1,0 +1,43 @@
+{
+  "name": "Painel GitHub — Central de Projetos & Foco",
+  "short_name": "Painel GitHub",
+  "description": "Seu ecossistema de repositórios do GitHub transformado em um centro de comando visual, foco e produtividade.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23090d16'/><text x='50' y='65' font-size='60' text-anchor='middle'>🚀</text></svg>",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "developer tools"],
+  "shortcuts": [
+    {
+      "name": "Projetos (Home)",
+      "url": "./#/home",
+      "description": "Visão geral dos repositórios e tarefas"
+    },
+    {
+      "name": "Modo Foco (Pomodoro)",
+      "url": "./#/focus",
+      "description": "Iniciar sessão de foco e produtividade"
+    },
+    {
+      "name": "Quadro Kanban",
+      "url": "./#/kanban",
+      "description": "Gerenciar tarefas por status"
+    },
+    {
+      "name": "Relatório Semanal",
+      "url": "./#/reports",
+      "description": "Ver métricas e síntese da semana"
+    }
+  ]
+}

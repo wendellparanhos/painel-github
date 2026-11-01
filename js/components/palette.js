@@ -25,6 +25,9 @@ import { showToast } from './toast.js';
 import { openQuickInboxCaptureModal } from '../views/inbox.js';
 import { updateRateLimitIndicator } from './nav.js';
 import { navigate } from '../router.js';
+import { openShareCardModal, openPortfolioExportModal } from './share-modals.js';
+import { computeWeeklyReportData } from '../utils/domain.js';
+import { startOnboardingTour } from './onboarding.js';
 
 let _backdrop = null;
 let _releaseFocus = null;
@@ -284,6 +287,13 @@ function _buildCatalogAndSearch(query) {
       category: 'Navegação',
       run: () => navigate('#/focus')
     },
+    {
+      icon: '📊',
+      title: 'Abrir Relatório Semanal & Análises Técnicas',
+      subtitle: 'Navegar para #/reports (Atalho: G R)',
+      category: 'Navegação',
+      run: () => navigate('#/reports')
+    },
     ...(state.config?.gamificationEnabled !== false ? [{
       icon: '🏅',
       title: 'Abrir Galeria de Conquistas, XP & Streak',
@@ -328,16 +338,37 @@ function _buildCatalogAndSearch(query) {
     },
     {
       icon: '🌙',
-      title: 'Tema: Alternar Escuro / Claro / Sistema',
+      title: 'Tema: Alternar Temas (Escuro, Claro, Cyber, Aurora, Vaporwave, Mono)',
       subtitle: `Atual: ${state.config.theme}`,
       category: 'Aparência',
       run: () => {
-        const order = ['dark', 'light', 'system'];
+        const order = ['dark', 'light', 'cyber', 'aurora', 'vaporwave', 'mono', 'system'];
         const next = order[(order.indexOf(state.config.theme) + 1) % order.length];
         dispatch({ type: 'CONFIG_UPDATE', payload: { theme: next } });
         document.documentElement.setAttribute('data-theme', next);
         showToast(`Tema alterado para "${next}"`, { type: 'success', duration: 2000 });
       }
+    },
+    {
+      icon: '🚀',
+      title: 'Exportar Portfólio Estático (HTML Autônomo)',
+      subtitle: 'Gerar página estática segura sem vazar notas privadas ou tokens',
+      category: 'Compartilhar',
+      run: () => openPortfolioExportModal(projects)
+    },
+    {
+      icon: '🖼️',
+      title: 'Gerar Cartão da Semana (Canvas 2D)',
+      subtitle: 'Baixar imagem PNG de alta resolução para compartilhar ritmo e foco',
+      category: 'Compartilhar',
+      run: () => openShareCardModal({ type: 'weekly', weeklyData: computeWeeklyReportData(getState()), state: getState() })
+    },
+    {
+      icon: '🧭',
+      title: 'Iniciar Tour de Apresentação (Onboarding)',
+      subtitle: 'Guia interativo de 3 passos para conhecer o painel',
+      category: 'Ajuda',
+      run: () => startOnboardingTour(true)
     },
     {
       icon: '🎨',

@@ -11,18 +11,43 @@
  */
 
 import { getState, dispatch, subscribe, undo, canUndo } from '../store/store.js';
-import { fetchUserRepos, fetchRepoCommits, fetchRepoPulls, fetchRepoIssues } from '../services/github.js';
+import {
+  fetchUserRepos,
+  fetchRepoCommits,
+  fetchRepoPulls,
+  fetchRepoIssues,
+  fetchRepoReleases,
+  fetchRepoActions,
+  fetchRepoReadme,
+  classifyActionsRuns
+} from '../services/github.js';
 import { applyCover, invalidateCoverCache } from '../utils/cover.js';
 import { formatRelativeTime, formatDateTime } from '../utils/formatters.js';
 import {
   formatLocalDueDate,
   isTaskOverdue,
   isTaskDueSoon,
-  paginateItems
+  paginateItems,
+  getMergedProjects,
+  evaluateProjectAbandonment,
+  HEALTH_FORMULA_VERSION
 } from '../utils/domain.js';
+import {
+  renderHealthRingBadge,
+  renderBuildStatusBadge,
+  openHealthFormulaModal
+} from '../components/charts.js';
+import {
+  buildSanitizedAiPayload,
+  auditAiPayloadSafety,
+  requestProjectAiSummary,
+  getStoredAiApiKey,
+  setStoredAiApiKey
+} from '../services/ai.js';
 import { renderMarkdown } from '../utils/markdown.js';
 import { showToast } from '../components/toast.js';
 import { openModal } from '../components/modal.js';
+import { openShareCardModal } from '../components/share-modals.js';
 import { burstParticles } from '../fx/effects.js';
 import { navigate } from '../router.js';
 
@@ -61,11 +86,14 @@ let _taskFilter = 'all'; // 'all' | 'open' | 'done'
 let _taskPage = 1;
 let _expandedSubtasks = new Set();
 
-// Cache em memória da view para alimentar a Timeline com dados remotos carregados
+// Cache em memória da view para alimentar a Timeline e dados técnicos sob demanda (Fase 5)
 let _remoteActivity = {
-  commits: { loading: true, data: null, error: null },
-  pulls:   { loading: true, data: null, error: null },
-  issues:  { loading: true, data: null, error: null }
+  commits:  { loading: true, data: null, error: null, availability: 'not_fetched' },
+  pulls:    { loading: true, data: null, error: null, availability: 'not_fetched' },
+  issues:   { loading: true, data: null, error: null, availability: 'not_fetched' },
+  releases: { loading: true, data: null, error: null, availability: 'not_fetched' },
+  actions:  { loading: true, data: null, error: null, availability: 'not_fetched' },
+  readme:   { loading: true, data: null, error: null, availability: 'not_fetched' }
 };
 
 // Cleanup de drag-and-drop ativo
@@ -96,9 +124,12 @@ export const ProjectView = {
     dispatch({ type: 'PROJECT_TOUCH', payload: { repoId: _repoId } });
 
     _remoteActivity = {
-      commits: { loading: true, data: null, error: null },
-      pulls:   { loading: true, data: null, error: null },
-      issues:  { loading: true, data: null, error: null }
+      commits:  { loading: true, data: null, error: null, availability: 'not_fetched' },
+      pulls:    { loading: true, data: null, error: null, availability: 'not_fetched' },
+      issues:   { loading: true, data: null, error: null, availability: 'not_fetched' },
+      releases: { loading: true, data: null, error: null, availability: 'not_fetched' },
+      actions:  { loading: true, data: null, error: null, availability: 'not_fetched' },
+      readme:   { loading: true, data: null, error: null, availability: 'not_fetched' }
     };
 
     _render();
@@ -211,9 +242,41 @@ function _refreshDynamicParts() {
     tasksTabBtn.textContent = String(openCount);
   }
 
+  // Atualiza anel de saúde e badge de build no Hero
+  const heroHealthSlot = document.getElementById('project-hero-health-slot');
+  if (heroHealthSlot) {
+    _populateHeroHealthSlot(heroHealthSlot, state);
+  }
+
   // Se estiver em overview, tasks ou timeline, re-renderiza a aba ativa
   if (_activeTab === 'overview' || _activeTab === 'tasks' || _activeTab === 'timeline') {
     _renderActiveTabContent();
+  }
+}
+
+function _getMergedProjectItem(state) {
+  const all = getMergedProjects(state || getState());
+  return all.find(p => String(p.id) === String(_repoId)) || null;
+}
+
+function _populateHeroHealthSlot(slotEl, state) {
+  slotEl.innerHTML = '';
+  const merged = _getMergedProjectItem(state);
+  if (!merged) return;
+
+  const ring = renderHealthRingBadge(merged.health, {
+    size: 42,
+    showLabel: true,
+    project: merged
+  });
+  slotEl.appendChild(ring);
+
+  if (!merged.isLocalOnly) {
+    const buildBadge = renderBuildStatusBadge(merged.tech?.actions, {
+      compact: false,
+      showUnavailableOnCompact: true
+    });
+    if (buildBadge) slotEl.appendChild(buildBadge);
   }
 }
 
@@ -269,6 +332,24 @@ function _renderHero(repoData, local) {
   customBtn.textContent = '✨ Ícone e Cor';
   customBtn.addEventListener('click', () => _openCustomizeModal());
 
+  const cardBtn = document.createElement('button');
+  cardBtn.className = 'btn btn-ghost btn-sm hero-overlay-btn';
+  cardBtn.textContent = '🖼️ Cartão';
+  cardBtn.title = 'Gerar cartão em alta resolução (1200×630) para compartilhar';
+  cardBtn.addEventListener('click', () => {
+    const mergedList = getMergedProjects(getState());
+    const m = mergedList.find(p => String(p.repoId || p.id) === String(_repoId)) || {
+      name: repo?.name || local?.name || 'Projeto',
+      description: repo?.description || local?.description || '',
+      language: repo?.language || local?.language || '',
+      stars: repo?.stargazers_count || local?.stars || 0,
+      status: local?.status || 'em andamento',
+      customIcon: local?.customIcon,
+      health: _techData?.health || null
+    };
+    openShareCardModal({ type: 'project', project: m });
+  });
+
   const regenBtn = document.createElement('button');
   regenBtn.className = 'btn btn-ghost btn-sm hero-overlay-btn';
   regenBtn.textContent = '🎨 Nova capa';
@@ -284,6 +365,7 @@ function _renderHero(repoData, local) {
   coverActions.appendChild(pinBtn);
   coverActions.appendChild(hideBtn);
   coverActions.appendChild(customBtn);
+  coverActions.appendChild(cardBtn);
   coverActions.appendChild(regenBtn);
   coverEl.style.position = 'relative';
   coverEl.appendChild(coverActions);
@@ -322,11 +404,21 @@ function _renderHero(repoData, local) {
   titleGroup.appendChild(name);
   titleGroup.appendChild(desc);
 
-  // Controle de Status
+  // Controle de Status + Saúde Heurística (Fase 5)
+  const rightHeroCluster = document.createElement('div');
+  rightHeroCluster.style.cssText = 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;';
+
+  const heroHealthSlot = document.createElement('div');
+  heroHealthSlot.id = 'project-hero-health-slot';
+  heroHealthSlot.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
+  _populateHeroHealthSlot(heroHealthSlot, getState());
+
   const statusControl = _renderStatusControl(local);
+  rightHeroCluster.appendChild(heroHealthSlot);
+  rightHeroCluster.appendChild(statusControl);
 
   header.appendChild(titleGroup);
-  header.appendChild(statusControl);
+  header.appendChild(rightHeroCluster);
 
   // Links e Metadados
   const linksEl = document.createElement('div');
@@ -360,6 +452,9 @@ function _renderHero(repoData, local) {
     }
     meta.innerHTML += `<span>⭐ ${repoData.stars || 0}</span>`;
     meta.innerHTML += `<span>🍴 ${repoData.forks || 0}</span>`;
+    if (repoData.license) {
+      meta.innerHTML += `<span title="Licença detectada no GitHub">⚖️ ${_escape(repoData.license)}</span>`;
+    }
     if (repoData.pushedAt) {
       meta.innerHTML += `<span>🕐 ${formatRelativeTime(repoData.pushedAt)}</span>`;
     }
@@ -370,6 +465,16 @@ function _renderHero(repoData, local) {
     localBadge.textContent = '🏠 Projeto Local';
     linksEl.appendChild(localBadge);
   }
+
+  const formulaBtn = document.createElement('button');
+  formulaBtn.type = 'button';
+  formulaBtn.className = 'btn btn-ghost btn-sm';
+  formulaBtn.textContent = `📐 Como a saúde é calculada`;
+  formulaBtn.addEventListener('click', () => {
+    const merged = _getMergedProjectItem(getState());
+    openHealthFormulaModal(merged, merged?.health);
+  });
+  linksEl.appendChild(formulaBtn);
 
   const historyBtn = document.createElement('button');
   historyBtn.className = 'btn btn-ghost btn-sm';
@@ -662,15 +767,31 @@ function _renderActiveTabContent() {
 }
 
 // ─────────────────────────────────────────────
-// ABA 1: VISÃO GERAL
+// ABA 1: VISÃO GERAL (Com Saúde, Detector de Abandono e Resumo com IA — Fase 5)
 // ─────────────────────────────────────────────
 function _buildOverviewTab(local, repoData) {
+  const outerWrap = document.createElement('div');
+  outerWrap.style.cssText = 'display:flex;flex-direction:column;gap:16px;';
+
+  const state = getState();
+  const merged = _getMergedProjectItem(state);
+  const abandonment = merged ? evaluateProjectAbandonment(merged, state) : null;
+
+  // Banner do Detector de Abandono (somente sugere, NUNCA altera o status sozinho)
+  if (abandonment?.isAbandoned) {
+    outerWrap.appendChild(_buildAbandonmentBanner(merged, abandonment, state));
+  }
+
   const grid = document.createElement('div');
   grid.className = 'project-split';
 
-  // Coluna esquerda: Resumo de Tarefas + Próximas Ações
+  // Coluna esquerda: Saúde Heurística + Resumo de Tarefas + Próximas Ações
   const leftCol = document.createElement('div');
   leftCol.style.cssText = 'display:flex;flex-direction:column;gap:16px;';
+
+  if (merged) {
+    leftCol.appendChild(_buildHealthAndStabilityCard(merged, local));
+  }
 
   const tasks = local.tasks || [];
   const totalTasks = tasks.length;
@@ -729,9 +850,13 @@ function _buildOverviewTab(local, repoData) {
   leftCol.appendChild(progressCard);
   leftCol.appendChild(quickTasksCard);
 
-  // Coluna direita: Histórico de Status + Resumo de Notas
+  // Coluna direita: Resumo com IA (Opcional) + Histórico de Status + Resumo de Notas
   const rightCol = document.createElement('div');
   rightCol.style.cssText = 'display:flex;flex-direction:column;gap:16px;';
+
+  if (merged) {
+    rightCol.appendChild(_buildAiSummaryCard(merged, local, repoData));
+  }
 
   // Card de Histórico Recente de Status
   const statusCard = document.createElement('div');
@@ -795,7 +920,360 @@ function _buildOverviewTab(local, repoData) {
 
   grid.appendChild(leftCol);
   grid.appendChild(rightCol);
-  return grid;
+  outerWrap.appendChild(grid);
+  return outerWrap;
+}
+
+// ─────────────────────────────────────────────
+// COMPONENTES DE INTELIGÊNCIA NA VISÃO GERAL (FASE 5)
+// ─────────────────────────────────────────────
+function _buildAbandonmentBanner(merged, abandonment, state) {
+  const cooldownDays = Number(state?.config?.abandonmentCooldownDays) || 14;
+  const banner = document.createElement('div');
+  banner.className = 'card abandonment-alert-banner';
+  banner.style.cssText = 'padding:14px 16px;border-left:4px solid var(--color-warning);background:rgba(245,158,11,0.08);display:flex;flex-direction:column;gap:10px;';
+
+  banner.innerHTML = `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div>
+        <strong style="color:var(--color-warning);font-size:var(--text-sm);">⏳ Detector de Abandono: ${abandonment.daysSinceActivity} dias sem atividade registrada</strong>
+        <p style="font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px;">
+          Este projeto ultrapassou o limite configurado (${abandonment.thresholdDays} dias). O painel <strong>nunca altera o status sozinho</strong> — escolha como deseja proceder:
+        </p>
+      </div>
+    </div>
+  `;
+
+  const actionsRow = document.createElement('div');
+  actionsRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+
+  const addAction = (label, cls, fn) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `btn ${cls} btn-sm`;
+    b.textContent = label;
+    b.addEventListener('click', fn);
+    actionsRow.appendChild(b);
+  };
+
+  addAction('▶️ Retomar projeto', 'btn-primary', () => {
+    dispatch({ type: 'PROJECT_UPDATE_STATUS', payload: { repoId: _repoId, status: 'em andamento' } });
+    dispatch({
+      type: 'PROJECT_ABANDONMENT_SET',
+      payload: { repoId: _repoId, abandonmentIgnored: false, abandonmentSnoozedUntil: null }
+    });
+    showToast('Projeto retomado (status: Em andamento)!', { type: 'success' });
+  });
+
+  addAction('⏸️ Pausar', 'btn-secondary', () => {
+    dispatch({ type: 'PROJECT_UPDATE_STATUS', payload: { repoId: _repoId, status: 'pausado' } });
+    showToast('Status alterado para Pausado.', { type: 'info' });
+  });
+
+  addAction('📦 Arquivar', 'btn-secondary', () => {
+    dispatch({ type: 'PROJECT_UPDATE_STATUS', payload: { repoId: _repoId, status: 'arquivado' } });
+    showToast('Status alterado para Arquivado.', { type: 'info' });
+  });
+
+  addAction(`💤 Adiar (${cooldownDays}d)`, 'btn-ghost', () => {
+    const until = new Date(Date.now() + cooldownDays * 86400000).toISOString();
+    dispatch({
+      type: 'PROJECT_ABANDONMENT_SET',
+      payload: { repoId: _repoId, abandonmentSnoozedUntil: until }
+    });
+    showToast(`Alerta adiado por ${cooldownDays} dias.`, { type: 'info' });
+  });
+
+  addAction('🛡️ Projeto estável (não cobrar atividade)', 'btn-ghost', () => {
+    dispatch({
+      type: 'PROJECT_ABANDONMENT_SET',
+      payload: { repoId: _repoId, exemptFromAbandonment: true }
+    });
+    showToast('Marcado como projeto estável (isento do detector de abandono).', { type: 'success' });
+  });
+
+  addAction('🙈 Ignorar', 'btn-ghost', () => {
+    dispatch({
+      type: 'PROJECT_ABANDONMENT_SET',
+      payload: { repoId: _repoId, abandonmentIgnored: true }
+    });
+    showToast('Alerta de abandono ignorado para este projeto.', { type: 'info' });
+  });
+
+  banner.appendChild(actionsRow);
+  return banner;
+}
+
+function _buildHealthAndStabilityCard(merged, local) {
+  const health = merged.health;
+  const card = document.createElement('div');
+  card.className = 'card';
+
+  const topRow = document.createElement('div');
+  topRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;';
+  topRow.innerHTML = `
+    <div>
+      <div class="section-eyebrow">🩺 Saúde Heurística (v${_escape(HEALTH_FORMULA_VERSION)})</div>
+      <h3 style="font-size:var(--text-base);">Indicador & Cobertura de Dados</h3>
+    </div>
+  `;
+  const ringBtn = renderHealthRingBadge(health, { size: 46, showLabel: true, project: merged });
+  topRow.appendChild(ringBtn);
+  card.appendChild(topRow);
+
+  const availFactors = (health?.factors || []).filter(f => f.available);
+  const missingFactors = (health?.factors || []).filter(f => !f.available);
+
+  const detailsBox = document.createElement('div');
+  detailsBox.style.cssText = 'font-size:var(--text-xs);color:var(--text-secondary);display:flex;flex-direction:column;gap:6px;margin-bottom:12px;';
+  detailsBox.innerHTML = `
+    <div><strong>Fatores considerados (${availFactors.length}/${(health?.factors || []).length}):</strong> ${availFactors.map(f => `${_escape(f.label)} (${f.rawScore}/100)`).join(' · ') || 'Nenhum'}</div>
+    ${missingFactors.length > 0 ? `<div style="color:var(--text-muted);"><strong>Não penalizam (ausentes/indisponíveis):</strong> ${missingFactors.map(f => _escape(f.label)).join(', ')}</div>` : ''}
+  `;
+  card.appendChild(detailsBox);
+
+  // Toggle para projetos que não precisam de atividade constante
+  const stabilityRow = document.createElement('label');
+  stabilityRow.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:var(--text-xs);color:var(--text-secondary);cursor:pointer;padding-top:8px;border-top:1px solid var(--border-subtle);';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = Boolean(local.exemptFromAbandonment);
+  cb.addEventListener('change', () => {
+    dispatch({
+      type: 'PROJECT_ABANDONMENT_SET',
+      payload: {
+        repoId: _repoId,
+        exemptFromAbandonment: cb.checked,
+        abandonmentIgnored: false
+      }
+    });
+    showToast(
+      cb.checked
+        ? 'Projeto marcado como estável (isento de cobrança de atividade constante).'
+        : 'Projeto voltou ao monitoramento normal de atividade.',
+      { type: 'info', duration: 2500 }
+    );
+  });
+  const span = document.createElement('span');
+  span.innerHTML = `🛡️ <strong>Projeto estável / concluído:</strong> não precisa de atividade constante (isentar do detector de abandono)`;
+  stabilityRow.appendChild(cb);
+  stabilityRow.appendChild(span);
+  card.appendChild(stabilityRow);
+
+  return card;
+}
+
+function _buildAiSummaryCard(merged, local, repoData) {
+  const state = getState();
+  const aiEnabled = Boolean(state.config?.aiEnabled);
+  const aiConsent = Boolean(state.config?.aiConsentGiven);
+  const savedSummary = local.aiSummary;
+
+  const card = document.createElement('div');
+  card.className = 'card ai-summary-card';
+
+  const header = document.createElement('div');
+  header.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;';
+  header.innerHTML = `
+    <div>
+      <div class="section-eyebrow">🤖 Inteligência Artificial Opcional</div>
+      <h3 style="font-size:var(--text-base);">Resumo Técnico com IA</h3>
+    </div>
+    <span class="badge" style="background:${aiEnabled && aiConsent ? 'rgba(16,185,129,0.14)' : 'rgba(100,116,139,0.16)'};color:${aiEnabled && aiConsent ? '#34d399' : 'var(--text-muted)'};border:1px solid var(--border-subtle);">
+      ${aiEnabled && aiConsent ? 'Opt-in Ativo' : 'Desligado por padrão'}
+    </span>
+  `;
+  card.appendChild(header);
+
+  const privacyNote = document.createElement('p');
+  privacyNote.style.cssText = 'font-size:var(--text-xs);color:var(--text-muted);margin-bottom:12px;line-height:1.45;';
+  privacyNote.textContent = 'Privacidade estrita: notas privadas, tarefas pessoais, tokens e código-fonte nunca entram no payload. Você revisa o JSON completo antes de qualquer envio.';
+  card.appendChild(privacyNote);
+
+  if (savedSummary && savedSummary.text) {
+    const summaryBox = document.createElement('div');
+    summaryBox.className = 'ai-summary-output-box';
+    summaryBox.style.cssText = 'padding:12px;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);margin-bottom:12px;display:flex;flex-direction:column;gap:8px;';
+
+    // Texto tratado estritamente como não confiável (textContent, nunca HTML executável)
+    const textEl = document.createElement('div');
+    textEl.className = 'ai-summary-safe-text';
+    textEl.style.cssText = 'font-size:var(--text-xs);color:var(--text-main);white-space:pre-wrap;line-height:1.55;';
+    textEl.textContent = savedSummary.text;
+    summaryBox.appendChild(textEl);
+
+    const metaFooter = document.createElement('div');
+    metaFooter.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--border-subtle);font-size:11px;color:var(--text-muted);';
+    const sourcesStr = Array.isArray(savedSummary.sources) && savedSummary.sources.length > 0
+      ? savedSummary.sources.join(', ')
+      : 'Metadados públicos';
+    metaFooter.innerHTML = `
+      <div>
+        <span>📅 ${formatDateTime(savedSummary.generatedAt)}</span> ·
+        <span>Provedor: <strong>${_escape(savedSummary.provider || 'IA')}</strong></span>
+        <div style="margin-top:2px;">Fontes consideradas: <em>${_escape(sourcesStr)}</em></div>
+      </div>
+    `;
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'btn btn-ghost btn-sm';
+    delBtn.style.color = 'var(--color-danger)';
+    delBtn.textContent = '🗑️ Excluir resumo';
+    delBtn.addEventListener('click', () => {
+      dispatch({ type: 'PROJECT_AI_SUMMARY_DELETE', payload: { repoId: _repoId } });
+      showToast('Resumo com IA excluído.', { type: 'info' });
+    });
+    metaFooter.appendChild(delBtn);
+    summaryBox.appendChild(metaFooter);
+    card.appendChild(summaryBox);
+  }
+
+  const actionsBar = document.createElement('div');
+  actionsBar.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+
+  const previewBtn = document.createElement('button');
+  previewBtn.type = 'button';
+  previewBtn.className = 'btn btn-primary btn-sm';
+  previewBtn.textContent = savedSummary ? '✨ Atualizar Resumo (Ver Prévia)' : '✨ Gerar Resumo com IA (Ver Prévia)';
+  previewBtn.addEventListener('click', () => {
+    _openAiPreviewAndConsentModal(merged, local, repoData);
+  });
+
+  const configBtn = document.createElement('button');
+  configBtn.type = 'button';
+  configBtn.className = 'btn btn-secondary btn-sm';
+  configBtn.textContent = '⚙️ Configurar Chave / Consentimento';
+  configBtn.addEventListener('click', () => navigate('settings'));
+
+  actionsBar.appendChild(previewBtn);
+  actionsBar.appendChild(configBtn);
+  card.appendChild(actionsBar);
+
+  return card;
+}
+
+function _openAiPreviewAndConsentModal(merged, local, repoData) {
+  const state = getState();
+  const payloadSpec = buildSanitizedAiPayload({
+    project: merged,
+    repoData,
+    remoteActivity: _remoteActivity,
+    config: state.config
+  });
+  const safetyAudit = auditAiPayloadSafety(payloadSpec);
+  const storedKey = getStoredAiApiKey();
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:12px;font-size:var(--text-xs);';
+
+  const destBox = document.createElement('div');
+  destBox.style.cssText = 'padding:10px 12px;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);';
+  destBox.innerHTML = `
+    <div><strong>🌐 Provedor & Destino da Requisição:</strong> ${_escape(payloadSpec.destination.providerName)} (<code>${_escape(payloadSpec.destination.model)}</code>)</div>
+    <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-secondary);word-break:break-all;margin-top:2px;">POST ${_escape(payloadSpec.destination.endpointDisplay)}</div>
+    <div style="margin-top:6px;"><strong>📋 Fontes consideradas (${payloadSpec.sourcesConsidered.length}):</strong> ${_escape(payloadSpec.sourcesConsidered.join(' · '))}</div>
+    <div style="margin-top:4px;color:${safetyAudit.safe ? '#34d399' : 'var(--color-danger)'};">
+      ${safetyAudit.safe
+        ? '🛡️ Auditoria Allowlist OK: Sem notas privadas, sem tarefas pessoais, sem tokens e sem arquivos completos.'
+        : `⚠️ Violação detectada: ${_escape(safetyAudit.violations.join(', '))}`}
+    </div>
+  `;
+  wrap.appendChild(destBox);
+
+  if (!payloadSpec.hasMinimalEvidence) {
+    const warnBox = document.createElement('div');
+    warnBox.style.cssText = 'padding:10px;border-radius:var(--radius-sm);background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;';
+    warnBox.textContent = '⚠️ Falta de evidência técnica: este projeto não possui descrição nem atividade remota carregada. O resumo não poderá ser gerado para evitar que a IA invente fatos.';
+    wrap.appendChild(warnBox);
+  }
+
+  // Campo rápido para chave caso ainda não tenha configurado
+  const keySection = document.createElement('div');
+  keySection.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+  keySection.innerHTML = `
+    <label style="font-weight:600;color:var(--text-secondary);">🔑 Chave da API de IA (guardada apenas neste aparelho, fora de backups JSON):</label>
+  `;
+  const keyInput = document.createElement('input');
+  keyInput.type = 'password';
+  keyInput.className = 'input';
+  keyInput.placeholder = storedKey ? '•••••••••••••••• (chave já configurada no navegador)' : 'Cole sua API Key aqui para autorizar o envio...';
+  keyInput.value = '';
+  keySection.appendChild(keyInput);
+  const keyWarn = document.createElement('small');
+  keyWarn.style.cssText = 'color:var(--text-muted);font-size:11px;';
+  keyWarn.textContent = 'Aviso: chaves no navegador podem ser extraídas por extensões ou scripts locais. Para uso frequente, prefira um backend/proxy próprio.';
+  keySection.appendChild(keyWarn);
+  wrap.appendChild(keySection);
+
+  // Prévia EXATA do JSON que será enviado
+  const jsonTitle = document.createElement('div');
+  jsonTitle.style.fontWeight = '700';
+  jsonTitle.textContent = '🔍 Prévia Exata do Payload JSON que será enviado:';
+  wrap.appendChild(jsonTitle);
+
+  const pre = document.createElement('pre');
+  pre.style.cssText = 'max-height:210px;overflow:auto;padding:10px;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);margin:0;white-space:pre-wrap;';
+  pre.textContent = payloadSpec.payloadJson;
+  wrap.appendChild(pre);
+
+  const statusLine = document.createElement('div');
+  statusLine.style.cssText = 'font-weight:600;min-height:18px;color:var(--accent-primary);';
+  wrap.appendChild(statusLine);
+
+  openModal({
+    title: 'Consentimento & Prévia Exata — Resumo com IA',
+    body: wrap,
+    confirmLabel: 'Autorizar & Gerar Resumo',
+    cancelLabel: 'Cancelar',
+    onConfirm: async () => {
+      const typedKey = keyInput.value.trim();
+      if (typedKey) {
+        setStoredAiApiKey(typedKey);
+      }
+      const effectiveKey = typedKey || getStoredAiApiKey();
+      if (!effectiveKey) {
+        showToast('Chave de API ausente. Insira uma chave válida ou configure em #/settings.', { type: 'error', duration: 4000 });
+        return;
+      }
+
+      // Salva consentimento explícito e habilita IA
+      dispatch({
+        type: 'CONFIG_UPDATE',
+        payload: {
+          aiEnabled: true,
+          aiConsentGiven: true,
+          aiConsentAt: new Date().toISOString()
+        }
+      });
+
+      showToast('Gerando resumo técnico com IA…', { type: 'info', duration: 2500 });
+      const res = await requestProjectAiSummary({
+        payloadObj: payloadSpec,
+        apiKey: effectiveKey,
+        config: {
+          ...getState().config,
+          aiEnabled: true,
+          aiConsentGiven: true
+        },
+        signal: _abortController?.signal
+      });
+
+      if (!res.ok) {
+        showToast(res.error || 'Falha ao gerar resumo com IA.', { type: 'error', duration: 4500 });
+        return;
+      }
+
+      dispatch({
+        type: 'PROJECT_AI_SUMMARY_SAVE',
+        payload: {
+          repoId: _repoId,
+          summary: res.data
+        }
+      });
+      showToast('Resumo com IA gerado e salvo com segurança!', { type: 'success', duration: 3500 });
+    }
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -1432,7 +1910,7 @@ function _openTaskEditModal(task) {
 }
 
 // ─────────────────────────────────────────────
-// ABA 3: ATIVIDADE (Commits, PRs e Issues com erro isolado)
+// ABA 3: ATIVIDADE (Commits, PRs, Issues, Releases, GitHub Actions e README/Licença — Fase 5)
 // ─────────────────────────────────────────────
 function _buildActivityTab(repoData) {
   const wrap = document.createElement('div');
@@ -1512,7 +1990,115 @@ function _buildActivityTab(repoData) {
     emptyText: 'Nenhuma issue aberta.'
   }));
 
+  // Widget 4: GitHub Actions (Últimos Builds — Indisponível nunca é falha!)
+  wrap.appendChild(_buildActivityWidget({
+    title: 'GitHub Actions (Builds)',
+    stateObj: _remoteActivity.actions,
+    onRetry: () => _loadActionsWidget(repoData.fullName, true),
+    renderItem: (run) => {
+      const a = document.createElement('a');
+      a.className = 'commit-item';
+      a.href = run.html_url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.style.textDecoration = 'none';
+
+      const isFailure = run.status === 'completed' && (run.conclusion === 'failure' || run.conclusion === 'timed_out' || run.conclusion === 'startup_failure');
+      const isSuccess = run.status === 'completed' && (run.conclusion === 'success' || run.conclusion === 'neutral' || run.conclusion === 'skipped');
+      const pillColor = isSuccess ? '#10b981' : isFailure ? '#ef4444' : '#f59e0b';
+      const pillBg = isSuccess ? 'rgba(16,185,129,0.12)' : isFailure ? 'rgba(239,68,68,0.14)' : 'rgba(245,158,11,0.14)';
+      const icon = isSuccess ? '🟢' : isFailure ? '🔴' : '🟡';
+      const statusText = run.status !== 'completed' ? 'Em andamento' : (run.conclusion || 'concluído');
+
+      a.innerHTML = `
+        <span class="commit-sha" style="color:${pillColor};background:${pillBg};">${icon} ${_escape(statusText)}</span>
+        <span class="commit-msg">${_escape(run.name || 'Workflow')} <small style="color:var(--text-muted);">(${_escape(run.head_branch || 'main')})</small></span>
+        <span class="commit-date">${formatRelativeTime(run.updated_at || run.created_at)}</span>
+      `;
+      return a;
+    },
+    emptyText: 'Nenhum workflow do GitHub Actions executado neste repositório.'
+  }));
+
+  // Widget 5: Releases Publicadas
+  wrap.appendChild(_buildActivityWidget({
+    title: 'Releases Publicadas',
+    stateObj: _remoteActivity.releases,
+    onRetry: () => _loadReleasesWidget(repoData.fullName, true),
+    renderItem: (rel) => {
+      const a = document.createElement('a');
+      a.className = 'commit-item';
+      a.href = rel.html_url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.style.textDecoration = 'none';
+      a.innerHTML = `
+        <span class="commit-sha" style="color:#8b5cf6;background:rgba(139,92,246,0.14);">🏷️ ${_escape(rel.tag_name)}</span>
+        <span class="commit-msg">${_escape(rel.name || rel.tag_name)}${rel.prerelease ? ' <small style="color:#f59e0b;">(pré-release)</small>' : ''}</span>
+        <span class="commit-date">${formatRelativeTime(rel.published_at || rel.created_at)}</span>
+      `;
+      return a;
+    },
+    emptyText: 'Nenhuma release publicada neste repositório.'
+  }));
+
+  // Widget 6: Documentação & Governança (README e Licença)
+  wrap.appendChild(_buildDocAndGovernanceWidget(repoData));
+
   return wrap;
+}
+
+function _buildDocAndGovernanceWidget(repoData) {
+  const card = document.createElement('div');
+  card.className = 'card activity-widget';
+
+  const header = document.createElement('div');
+  header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;';
+  header.innerHTML = `<h3 style="font-size:var(--text-base);">Documentação & Licença</h3>`;
+
+  const refreshBtn = document.createElement('button');
+  refreshBtn.type = 'button';
+  refreshBtn.className = 'btn btn-ghost btn-sm';
+  refreshBtn.textContent = '↻';
+  refreshBtn.title = 'Atualizar verificação de README';
+  refreshBtn.addEventListener('click', () => _loadReadmeWidget(repoData.fullName, true));
+  header.appendChild(refreshBtn);
+  card.appendChild(header);
+
+  const readmeState = _remoteActivity.readme;
+  let readmeHtml = '';
+  if (readmeState.loading) {
+    readmeHtml = `<div class="skeleton" style="height:26px;width:90%;"></div>`;
+  } else if (readmeState.error) {
+    readmeHtml = `
+      <div style="font-size:var(--text-xs);color:var(--color-warning);">
+        📄 <strong>README:</strong> Estado Indisponível (${_escape(readmeState.error)})
+      </div>
+    `;
+  } else if (readmeState.data?.hasReadme) {
+    const kb = readmeState.data.size ? `${Math.max(1, Math.round(readmeState.data.size / 1024))} KB` : 'presente';
+    readmeHtml = `
+      <div style="font-size:var(--text-xs);color:#34d399;">
+        📄 <strong>README:</strong> Presente (<code>${_escape(readmeState.data.name || 'README.md')}</code> · ${kb})
+      </div>
+    `;
+  } else {
+    readmeHtml = `
+      <div style="font-size:var(--text-xs);color:var(--text-muted);">
+        📄 <strong>README:</strong> Ausente no repositório
+      </div>
+    `;
+  }
+
+  const licenseHtml = repoData?.license
+    ? `<div style="font-size:var(--text-xs);color:#34d399;">⚖️ <strong>Licença:</strong> ${_escape(repoData.license)}</div>`
+    : `<div style="font-size:var(--text-xs);color:var(--text-muted);">⚖️ <strong>Licença:</strong> Não declarada nos metadados do GitHub</div>`;
+
+  const body = document.createElement('div');
+  body.style.cssText = 'display:flex;flex-direction:column;gap:10px;padding:6px 0;';
+  body.innerHTML = `${readmeHtml}${licenseHtml}`;
+  card.appendChild(body);
+  return card;
 }
 
 function _buildActivityWidget({ title, stateObj, onRetry, renderItem, emptyText }) {
@@ -1550,10 +2136,12 @@ function _buildActivityWidget({ title, stateObj, onRetry, renderItem, emptyText 
   }
 
   if (stateObj.error) {
+    const isPerm = stateObj.availability === 'permission_denied';
+    const statusTitle = isPerm ? 'Estado: Sem permissão / Indisponível' : 'Estado: Indisponível';
     const errBox = document.createElement('div');
-    errBox.style.cssText = 'padding:12px;border-radius:var(--radius-sm);background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);font-size:var(--text-xs);color:var(--color-warning);display:flex;flex-direction:column;gap:8px;';
+    errBox.style.cssText = 'padding:12px;border-radius:var(--radius-sm);background:rgba(100,116,139,0.12);border:1px solid var(--border-subtle);font-size:var(--text-xs);color:var(--text-secondary);display:flex;flex-direction:column;gap:8px;';
     errBox.innerHTML = `
-      <div><strong>Estado: Indisponível</strong></div>
+      <div><strong style="color:var(--text-main);">📡 ${statusTitle}</strong> <small style="color:var(--text-muted);">(não conta como falha nem zero)</small></div>
       <div>${_escape(stateObj.error)}</div>
     `;
     const retryBtn = document.createElement('button');
@@ -1603,17 +2191,27 @@ async function _loadAllRemoteActivity() {
   }
 
   if (!repoData?.fullName) {
-    _remoteActivity.commits = { loading: false, data: null, error: 'Indisponível (repositório local ou ausente).' };
-    _remoteActivity.pulls   = { loading: false, data: null, error: 'Indisponível (repositório local ou ausente).' };
-    _remoteActivity.issues  = { loading: false, data: null, error: 'Indisponível (repositório local ou ausente).' };
-    if (_activeTab === 'activity' || _activeTab === 'timeline') _renderActiveTabContent();
+    const unavObj = { loading: false, data: null, error: 'Indisponível (repositório local ou ausente).', availability: 'unavailable' };
+    _remoteActivity.commits  = { ...unavObj };
+    _remoteActivity.pulls    = { ...unavObj };
+    _remoteActivity.issues   = { ...unavObj };
+    _remoteActivity.releases = { ...unavObj };
+    _remoteActivity.actions  = { ...unavObj };
+    _remoteActivity.readme   = { ...unavObj };
+    if (_activeTab === 'activity' || _activeTab === 'timeline' || _activeTab === 'overview') {
+      _renderActiveTabContent();
+    }
     return;
   }
 
+  // Consulta sob demanda respeitando a fila de concorrência limitada (MAX_CONCURRENT_SUBREQUESTS = 2)
   await Promise.allSettled([
     _loadCommitsWidget(repoData.fullName, false),
     _loadPullsWidget(repoData.fullName, false),
-    _loadIssuesWidget(repoData.fullName, false)
+    _loadIssuesWidget(repoData.fullName, false),
+    _loadReleasesWidget(repoData.fullName, false),
+    _loadActionsWidget(repoData.fullName, false),
+    _loadReadmeWidget(repoData.fullName, false)
   ]);
 }
 
@@ -1624,7 +2222,12 @@ async function _loadCommitsWidget(fullName, force = false) {
   const res = await fetchRepoCommits(fullName, _abortController?.signal, force);
   if (_abortController?.signal.aborted) return;
 
-  _remoteActivity.commits = { loading: false, data: res.data, error: res.error };
+  _remoteActivity.commits = {
+    loading: false,
+    data: res.data,
+    error: res.error,
+    availability: res.availability || (res.error ? 'unavailable' : 'available')
+  };
   if (_activeTab === 'activity' || _activeTab === 'timeline') _renderActiveTabContent();
 }
 
@@ -1635,7 +2238,12 @@ async function _loadPullsWidget(fullName, force = false) {
   const res = await fetchRepoPulls(fullName, _abortController?.signal, force);
   if (_abortController?.signal.aborted) return;
 
-  _remoteActivity.pulls = { loading: false, data: res.data, error: res.error };
+  _remoteActivity.pulls = {
+    loading: false,
+    data: res.data,
+    error: res.error,
+    availability: res.availability || (res.error ? 'unavailable' : 'available')
+  };
   if (_activeTab === 'activity' || _activeTab === 'timeline') _renderActiveTabContent();
 }
 
@@ -1646,8 +2254,139 @@ async function _loadIssuesWidget(fullName, force = false) {
   const res = await fetchRepoIssues(fullName, _abortController?.signal, force);
   if (_abortController?.signal.aborted) return;
 
-  _remoteActivity.issues = { loading: false, data: res.data, error: res.error };
+  const availability = res.availability || (res.error ? 'unavailable' : 'available');
+  _remoteActivity.issues = {
+    loading: false,
+    data: res.data,
+    error: res.error,
+    availability
+  };
+
+  dispatch({
+    type: 'GITHUB_REPO_TECH_UPDATE',
+    payload: {
+      repoId: _repoId,
+      tech: {
+        issues: {
+          availability,
+          openCount: Array.isArray(res.data) ? res.data.length : null,
+          error: res.error || null,
+          fetchedAt: res.fetchedAt || new Date().toISOString()
+        }
+      }
+    }
+  });
+
   if (_activeTab === 'activity' || _activeTab === 'timeline') _renderActiveTabContent();
+}
+
+async function _loadReleasesWidget(fullName, force = false) {
+  _remoteActivity.releases.loading = true;
+  if (_activeTab === 'activity') _renderActiveTabContent();
+
+  const res = await fetchRepoReleases(fullName, _abortController?.signal, force);
+  if (_abortController?.signal.aborted) return;
+
+  const availability = res.availability || (res.error ? 'unavailable' : 'available');
+  _remoteActivity.releases = {
+    loading: false,
+    data: res.data,
+    error: res.error,
+    availability
+  };
+
+  const list = Array.isArray(res.data) ? res.data : [];
+  dispatch({
+    type: 'GITHUB_REPO_TECH_UPDATE',
+    payload: {
+      repoId: _repoId,
+      tech: {
+        releases: {
+          availability,
+          count: availability === 'available' ? list.length : null,
+          latest: list[0] ? { tag_name: list[0].tag_name, name: list[0].name, published_at: list[0].published_at } : null,
+          items: list.slice(0, 6),
+          error: res.error || null,
+          fetchedAt: res.fetchedAt || new Date().toISOString()
+        }
+      }
+    }
+  });
+
+  if (_activeTab === 'activity' || _activeTab === 'timeline') _renderActiveTabContent();
+}
+
+async function _loadActionsWidget(fullName, force = false) {
+  _remoteActivity.actions.loading = true;
+  if (_activeTab === 'activity') _renderActiveTabContent();
+
+  const res = await fetchRepoActions(fullName, _abortController?.signal, force);
+  if (_abortController?.signal.aborted) return;
+
+  const availability = res.availability || (res.error ? 'unavailable' : 'available');
+  _remoteActivity.actions = {
+    loading: false,
+    data: res.data,
+    error: res.error,
+    availability
+  };
+
+  const runs = Array.isArray(res.data) ? res.data : [];
+  const classified = classifyActionsRuns({ availability, data: runs, error: res.error });
+  dispatch({
+    type: 'GITHUB_REPO_TECH_UPDATE',
+    payload: {
+      repoId: _repoId,
+      tech: {
+        actions: {
+          availability,
+          buildStatus: classified.status,
+          isConfirmedFailure: classified.isConfirmedFailure,
+          label: classified.label,
+          detail: classified.detail,
+          runs: runs.slice(0, 6),
+          error: res.error || null,
+          fetchedAt: res.fetchedAt || new Date().toISOString()
+        }
+      }
+    }
+  });
+
+  if (_activeTab === 'activity' || _activeTab === 'timeline') _renderActiveTabContent();
+}
+
+async function _loadReadmeWidget(fullName, force = false) {
+  _remoteActivity.readme.loading = true;
+  if (_activeTab === 'activity') _renderActiveTabContent();
+
+  const res = await fetchRepoReadme(fullName, _abortController?.signal, force);
+  if (_abortController?.signal.aborted) return;
+
+  const availability = res.availability || (res.error ? 'unavailable' : 'available');
+  _remoteActivity.readme = {
+    loading: false,
+    data: res.data,
+    error: res.error,
+    availability
+  };
+
+  dispatch({
+    type: 'GITHUB_REPO_TECH_UPDATE',
+    payload: {
+      repoId: _repoId,
+      tech: {
+        readme: {
+          availability,
+          hasReadme: availability === 'available' ? Boolean(res.data?.hasReadme) : null,
+          size: res.data?.size || 0,
+          error: res.error || null,
+          fetchedAt: res.fetchedAt || new Date().toISOString()
+        }
+      }
+    }
+  });
+
+  if (_activeTab === 'activity') _renderActiveTabContent();
 }
 
 // ─────────────────────────────────────────────
@@ -1883,6 +2622,37 @@ function _buildTimelineTab(local, repoData) {
     }
   }
 
+  if (Array.isArray(_remoteActivity.releases?.data)) {
+    for (const rel of _remoteActivity.releases.data) {
+      const ts = rel.published_at || rel.created_at;
+      if (ts) {
+        events.push({
+          origin: 'remote',
+          originLabel: 'Remoto · Release GitHub',
+          icon: '🏷️',
+          title: `Release ${rel.tag_name}${rel.name && rel.name !== rel.tag_name ? ` — ${rel.name}` : ''}`,
+          timestamp: ts
+        });
+      }
+    }
+  }
+
+  if (Array.isArray(_remoteActivity.actions?.data)) {
+    for (const run of _remoteActivity.actions.data.slice(0, 6)) {
+      const ts = run.updated_at || run.created_at;
+      if (ts) {
+        const statusDesc = run.status !== 'completed' ? 'em andamento' : (run.conclusion || 'concluído');
+        events.push({
+          origin: 'remote',
+          originLabel: 'Remoto · Build Actions',
+          icon: '⚙️',
+          title: `Workflow "${run.name || 'CI'}" (${run.head_branch || 'main'}): ${statusDesc}`,
+          timestamp: ts
+        });
+      }
+    }
+  }
+
   // Ordena cronologicamente (mais recente primeiro)
   events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
@@ -1943,6 +2713,11 @@ function _getGitHubRepoData(state) {
   const repos = state.githubCache?.repos || [];
   const found = repos.find(r => String(r.id) === _repoId);
   if (!found) return null;
+  const rawLicense = found.license
+    ? (typeof found.license === 'string'
+        ? found.license
+        : (found.license.spdx_id && found.license.spdx_id !== 'NOASSERTION' ? found.license.spdx_id : found.license.name))
+    : null;
   return {
     name: found.name,
     description: found.description,
@@ -1953,7 +2728,8 @@ function _getGitHubRepoData(state) {
     createdAt: found.created_at,
     htmlUrl: found.html_url,
     homepage: found.homepage,
-    fullName: found.full_name
+    fullName: found.full_name,
+    license: rawLicense || null
   };
 }
 

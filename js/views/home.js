@@ -13,6 +13,7 @@
 import { getState, dispatch, subscribe, undo, canUndo } from '../store/store.js';
 import { fetchUserRepos, fetchUserPublicEvents, getLangColor } from '../services/github.js';
 import { applyCover } from '../utils/cover.js';
+import { renderEmptyState } from '../components/empty-state.js';
 import { formatRelativeTime, formatNumber } from '../utils/formatters.js';
 import {
   STATUS_ORDER,
@@ -21,6 +22,7 @@ import {
   computeGlobalMetrics,
   computeDominantStatus,
   computePublicEventsAnalytics,
+  computeConsolidatedHomeAlerts,
   getContinueProject,
   getFocusTasks,
   formatLocalDueDate,
@@ -40,7 +42,9 @@ import {
   renderWeeklyCommitsChart,
   renderLanguageStackedBar,
   renderActivityHeatmap2D,
-  buildCardSparklineElement
+  buildCardSparklineElement,
+  renderHealthRingBadge,
+  renderBuildStatusBadge
 } from '../components/charts.js';
 import { updateRateLimitIndicator } from '../components/nav.js';
 import { renderMascotWidget } from '../components/mascot.js';
@@ -71,6 +75,7 @@ const DUE_OPTIONS = [
 ];
 const SORT_OPTIONS = [
   { value: 'updated',  label: 'Ordenar: Atividade recente' },
+  { value: 'health',   label: 'Ordenar: Saúde do projeto' },
   { value: 'priority', label: 'Ordenar: Prioridade' },
   { value: 'due',      label: 'Ordenar: Prazo mais próximo' },
   { value: 'name',     label: 'Ordenar: Nome (A–Z)' },
@@ -286,30 +291,19 @@ function _renderHighlightsSection() {
 
 function _renderHighlightsInto(wrap) {
   const state = getState();
-  const metrics = computeGlobalMetrics(state);
   const continueProj = getContinueProject(state);
   const focusTasks = getFocusTasks(state, 6);
 
   const container = document.createElement('div');
   container.className = 'home-highlights';
 
-  // 1. Alerta simples de tarefas vencidas
-  if (metrics.overdueTasks > 0) {
-    const alertBar = document.createElement('div');
-    alertBar.className = 'overdue-alert-banner';
-    alertBar.innerHTML = `
-      <span>⏰ <strong>Atenção:</strong> você tem <strong>${metrics.overdueTasks}</strong> tarefa(s) com prazo vencido.</span>
-    `;
-    const filterOverdueBtn = document.createElement('button');
-    filterOverdueBtn.type = 'button';
-    filterOverdueBtn.className = 'btn btn-secondary btn-sm';
-    filterOverdueBtn.textContent = 'Filtrar projetos com atraso';
-    filterOverdueBtn.addEventListener('click', () => {
-      _filterState.dueFilter = 'overdue';
-      _render();
-    });
-    alertBar.appendChild(filterOverdueBtn);
-    container.appendChild(alertBar);
+  // 1. Alertas Consolidados na Home (Fase 5):
+  //    - Tarefas vencidas
+  //    - Builds com falha (SOMENTE quando confirmado pela API)
+  //    - Projetos parados (Detector de Abandono — nunca altera status sozinho)
+  const alertsSection = _buildConsolidatedHomeAlertsSection(state);
+  if (alertsSection) {
+    container.appendChild(alertsSection);
   }
 
   // Bento Grid Prioritária: 1) Em Foco, 2) Continue de onde parou (com borda animada @property), 3) Ações Rápidas
@@ -469,15 +463,19 @@ function _renderHighlightsInto(wrap) {
     split.appendChild(contCard);
   }
 
-  // Card 3: Ações Rápidas e Explorador Visual (Foco, Galáxia, Grafo, Inbox, Kanban) + Mascote opcional
+  // Card 3: Ações Rápidas e Explorador Visual (Foco, Relatórios, Galáxia, Grafo, Inbox) + Mascote opcional
   const quickActionsCard = document.createElement('div');
   quickActionsCard.className = 'card quick-actions-bento-card bento-priority-actions';
   quickActionsCard.innerHTML = `
-    <div class="section-eyebrow">🚀 Ações Rápidas & Foco</div>
+    <div class="section-eyebrow">🚀 Ações Rápidas & Inteligência</div>
     <div class="quick-actions-grid">
       <a href="#/focus" class="btn btn-secondary btn-sm quick-action-tile">
         <span>🍅</span>
         <span>Modo Foco</span>
+      </a>
+      <a href="#/reports" class="btn btn-secondary btn-sm quick-action-tile">
+        <span>📊</span>
+        <span>Relatório Semanal</span>
       </a>
       <button type="button" class="btn btn-secondary btn-sm quick-action-tile" data-act="inbox">
         <span>📥</span>
@@ -503,6 +501,151 @@ function _renderHighlightsInto(wrap) {
 
   container.appendChild(split);
   wrap.appendChild(container);
+}
+
+// ─────────────────────────────────────────────
+// ALERTAS CONSOLIDADOS NA HOME (FASE 5)
+// 1. Tarefas vencidas
+// 2. Builds com falha (SOMENTE quando confirmado)
+// 3. Projetos parados (Detector de Abandono — nunca altera status sozinho)
+// ─────────────────────────────────────────────
+function _buildConsolidatedHomeAlertsSection(state) {
+  const alerts = computeConsolidatedHomeAlerts(state);
+  if (!alerts.hasAnyAlert) return null;
+
+  const cooldownDays = Number(state?.config?.abandonmentCooldownDays) || 14;
+  const wrap = document.createElement('section');
+  wrap.className = 'consolidated-home-alerts';
+  wrap.setAttribute('aria-label', 'Alertas consolidados do painel');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-bottom:4px;';
+
+  // 1. Tarefas vencidas
+  if (alerts.overdueTasks.count > 0) {
+    const alertBar = document.createElement('div');
+    alertBar.className = 'overdue-alert-banner';
+    alertBar.innerHTML = `
+      <span>⏰ <strong>Tarefas vencidas:</strong> você tem <strong>${alerts.overdueTasks.count}</strong> tarefa(s) com prazo atrasado em <strong>${alerts.overdueTasks.projects.length}</strong> projeto(s).</span>
+    `;
+    const filterOverdueBtn = document.createElement('button');
+    filterOverdueBtn.type = 'button';
+    filterOverdueBtn.className = 'btn btn-secondary btn-sm';
+    filterOverdueBtn.textContent = 'Filtrar projetos com atraso';
+    filterOverdueBtn.addEventListener('click', () => {
+      _filterState.dueFilter = 'overdue';
+      _render();
+    });
+    alertBar.appendChild(filterOverdueBtn);
+    wrap.appendChild(alertBar);
+  }
+
+  // 2. Builds com falha CONFIRMADA (indisponível/sem permissão nunca entra aqui)
+  if (alerts.confirmedFailedBuilds.count > 0) {
+    const buildBar = document.createElement('div');
+    buildBar.className = 'overdue-alert-banner build-failure-alert-banner';
+    buildBar.style.cssText = 'border-color:rgba(239,68,68,0.4);background:rgba(239,68,68,0.08);';
+
+    const leftSpan = document.createElement('div');
+    leftSpan.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+    leftSpan.innerHTML = `
+      <span>🔴 <strong>Builds com falha confirmada (${alerts.confirmedFailedBuilds.count}):</strong></span>
+    `;
+    alerts.confirmedFailedBuilds.items.slice(0, 4).forEach(b => {
+      const a = document.createElement('a');
+      a.href = `#/project/${b.repoId}`;
+      a.className = 'badge';
+      a.style.cssText = 'background:rgba(239,68,68,0.16);color:#f87171;border:1px solid rgba(239,68,68,0.35);text-decoration:none;';
+      a.textContent = `${b.name} (${b.workflowName})`;
+      leftSpan.appendChild(a);
+    });
+    buildBar.appendChild(leftSpan);
+    wrap.appendChild(buildBar);
+  }
+
+  // 3. Detector de Abandono (Projetos parados há >= threshold dias)
+  if (alerts.abandonedProjects.count > 0) {
+    const abandCard = document.createElement('div');
+    abandCard.className = 'card abandonment-home-alert';
+    abandCard.style.cssText = 'padding:12px 16px;border-left:4px solid var(--color-warning);background:rgba(245,158,11,0.06);display:flex;flex-direction:column;gap:8px;';
+
+    const topRow = document.createElement('div');
+    topRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;';
+    topRow.innerHTML = `
+      <div>
+        <strong style="font-size:var(--text-sm);color:var(--color-warning);">🕸️ Detector de Abandono: ${alerts.abandonedProjects.count} projeto(s) sem atividade recente</strong>
+        <span style="font-size:var(--text-xs);color:var(--text-muted);margin-left:6px;">(O painel nunca muda o status sozinho — escolha uma ação abaixo)</span>
+      </div>
+    `;
+    abandCard.appendChild(topRow);
+
+    const listEl = document.createElement('div');
+    listEl.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+
+    alerts.abandonedProjects.items.slice(0, 3).forEach(entry => {
+      const proj = entry.project;
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:6px 10px;background:var(--bg-elevated);border-radius:var(--radius-sm);font-size:var(--text-xs);';
+
+      const info = document.createElement('div');
+      info.innerHTML = `
+        <a href="#/project/${proj.repoId}" style="font-weight:700;color:var(--text-main);">${_escape(proj.name)}</a>
+        <span style="color:var(--text-muted);margin-left:6px;">· ${entry.abandonment.daysSinceActivity}d sem atividade (status atual: ${_escape(proj.status)})</span>
+      `;
+
+      const btns = document.createElement('div');
+      btns.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap;';
+
+      const mkBtn = (label, fn) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn btn-ghost btn-sm';
+        b.style.cssText = 'padding:2px 8px;min-height:26px;font-size:11px;';
+        b.textContent = label;
+        b.addEventListener('click', fn);
+        btns.appendChild(b);
+      };
+
+      mkBtn('▶️ Retomar', () => {
+        dispatch({ type: 'PROJECT_UPDATE_STATUS', payload: { repoId: proj.repoId, status: 'em andamento' } });
+        dispatch({ type: 'PROJECT_ABANDONMENT_SET', payload: { repoId: proj.repoId, abandonmentIgnored: false, abandonmentSnoozedUntil: null } });
+        showToast(`"${proj.name}" retomado!`, { type: 'success' });
+      });
+
+      mkBtn('⏸️ Pausar', () => {
+        dispatch({ type: 'PROJECT_UPDATE_STATUS', payload: { repoId: proj.repoId, status: 'pausado' } });
+        showToast(`"${proj.name}" marcado como pausado.`, { type: 'info' });
+      });
+
+      mkBtn('📦 Arquivar', () => {
+        dispatch({ type: 'PROJECT_UPDATE_STATUS', payload: { repoId: proj.repoId, status: 'arquivado' } });
+        showToast(`"${proj.name}" arquivado.`, { type: 'info' });
+      });
+
+      mkBtn(`💤 Adiar ${cooldownDays}d`, () => {
+        const until = new Date(Date.now() + cooldownDays * 86400000).toISOString();
+        dispatch({ type: 'PROJECT_ABANDONMENT_SET', payload: { repoId: proj.repoId, abandonmentSnoozedUntil: until } });
+        showToast(`Alerta de "${proj.name}" adiado por ${cooldownDays} dias.`, { type: 'info' });
+      });
+
+      mkBtn('🛡️ Estável', () => {
+        dispatch({ type: 'PROJECT_ABANDONMENT_SET', payload: { repoId: proj.repoId, exemptFromAbandonment: true } });
+        showToast(`"${proj.name}" marcado como estável (isento).`, { type: 'success' });
+      });
+
+      mkBtn('🙈 Ignorar', () => {
+        dispatch({ type: 'PROJECT_ABANDONMENT_SET', payload: { repoId: proj.repoId, abandonmentIgnored: true } });
+        showToast(`Alerta ignorado para "${proj.name}".`, { type: 'info' });
+      });
+
+      row.appendChild(info);
+      row.appendChild(btns);
+      listEl.appendChild(row);
+    });
+
+    abandCard.appendChild(listEl);
+    wrap.appendChild(abandCard);
+  }
+
+  return wrap;
 }
 
 // ─────────────────────────────────────────────
@@ -703,13 +846,16 @@ function _renderGridInto(wrap) {
   const sparklinesMap = eventsAnalytics.repoSparklines || {};
 
   if (items.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'card';
-    empty.style.cssText = 'text-align:center;padding:3rem 1rem;color:var(--text-muted);';
-    empty.innerHTML = `
-      <div style="font-size:2.5rem;margin-bottom:0.5rem;">📭</div>
-      <p style="font-size:var(--text-base);">Nenhum repositório encontrado para os filtros selecionados.</p>
-    `;
+    const empty = renderEmptyState({
+      illustration: 'search',
+      title: 'Nenhum repositório encontrado',
+      description: 'Não há projetos correspondentes à busca ou filtros ativos.',
+      actionLabel: 'Limpar filtros',
+      onAction: () => {
+        _filterState = { search: '', status: '', language: '', sort: 'stars_desc', showOnlyFocus: false, showOnlyDueSoon: false };
+        _renderProjects();
+      }
+    });
     wrap.appendChild(empty);
     return;
   }
@@ -904,12 +1050,19 @@ function _buildProjectCard(item, sparklineData = null) {
   nameEl.className = 'project-card-title';
   nameEl.textContent = `${item.customIcon ? item.customIcon + ' ' : ''}${item.name}`;
 
+  const headerRight = document.createElement('div');
+  headerRight.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
+
+  const healthRing = renderHealthRingBadge(item.health, { size: 30, project: item });
+  headerRight.appendChild(healthRing);
+
   const badgeEl = document.createElement('div');
   badgeEl.innerHTML = _buildBadge(item.status, item.status);
   badgeEl.style.flexShrink = '0';
+  headerRight.appendChild(badgeEl);
 
   header.appendChild(nameEl);
-  header.appendChild(badgeEl);
+  header.appendChild(headerRight);
 
   const descEl = document.createElement('p');
   descEl.className = 'project-card-desc';
@@ -969,7 +1122,10 @@ function _buildProjectCard(item, sparklineData = null) {
     ${item.pushedAt ? `<span title="Última atividade">${formatRelativeTime(item.pushedAt)}</span>` : ''}
   `;
 
+  const buildBadgeEl = renderBuildStatusBadge(item.tech?.actions, { compact: true });
+
   meta.appendChild(langEl);
+  if (buildBadgeEl) meta.appendChild(buildBadgeEl);
   if (sparklineEl) meta.appendChild(sparklineEl);
   meta.appendChild(metaStats);
 
@@ -1137,12 +1293,22 @@ function _buildProjectListRow(item) {
   `;
 
   const right = document.createElement('div');
-  right.style.cssText = 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;';
-  right.innerHTML = `
+  right.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
+
+  const buildBadge = renderBuildStatusBadge(item.tech?.actions, { compact: true });
+  if (buildBadge) right.appendChild(buildBadge);
+
+  const healthRing = renderHealthRingBadge(item.health, { size: 28, project: item });
+  right.appendChild(healthRing);
+
+  const metaSpan = document.createElement('span');
+  metaSpan.style.cssText = 'display:inline-flex;align-items:center;gap:10px;';
+  metaSpan.innerHTML = `
     ${item.overdueTasksCount > 0 ? `<span style="font-size:var(--text-xs);color:var(--color-danger);font-weight:700;">⏰ ${item.overdueTasksCount} vencida</span>` : ''}
     <span class="tabular" style="font-size:var(--text-xs);color:var(--text-muted);">☑️ ${item.doneTasksCount}/${item.tasks.length}</span>
     ${_buildBadge(item.status, item.status)}
   `;
+  right.appendChild(metaSpan);
 
   row.appendChild(left);
   row.appendChild(right);

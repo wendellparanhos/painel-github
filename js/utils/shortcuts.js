@@ -98,6 +98,11 @@ function _handleGlobalKeyDown(e) {
       navigate('#/focus');
       return;
     }
+    if (lower === 'r') {
+      e.preventDefault();
+      navigate('#/reports');
+      return;
+    }
     if (lower === 'a') {
       e.preventDefault();
       navigate('#/achievements');
@@ -171,6 +176,7 @@ export function openShortcutsHelpModal() {
     { keys: 'G  depois  H', desc: 'Ir para a Home (#/home)' },
     { keys: 'G  depois  K', desc: 'Ir para o Quadro Kanban (#/kanban)' },
     { keys: 'G  depois  F', desc: 'Ir para o Modo Foco / Pomodoro (#/focus)' },
+    { keys: 'G  depois  R', desc: 'Ir para Relatório Semanal & Análises (#/reports)' },
     { keys: 'G  depois  A', desc: 'Ir para Conquistas & Streak (#/achievements)' },
     { keys: 'G  depois  X', desc: 'Ir para a Galáxia de Projetos (#/galaxy)' },
     { keys: 'G  depois  G', desc: 'Ir para o Grafo de Conexões (#/graph)' },

@@ -11,6 +11,15 @@ import { exportJSON, importJSON, triggerDownload, backup, clearGitHubCache } fro
 import { setFxLevel } from '../fx/effects.js';
 import { playTaskDoneSound, triggerHaptic } from '../services/feedback.js';
 import { getNotificationCapability, requestContextualNotificationPermission } from '../services/notifications.js';
+import {
+  getStoredAiApiKey,
+  setStoredAiApiKey,
+  clearStoredAiApiKey,
+  revokeAiConsent
+} from '../services/ai.js';
+import { clearRepoActivityMemoryCache } from '../services/github.js';
+import { executeGistSync } from '../services/sync.js';
+import { startOnboardingTour } from '../components/onboarding.js';
 import { showToast } from '../components/toast.js';
 import { openModal } from '../components/modal.js';
 
@@ -26,9 +35,13 @@ const ACCENTS = [
 ];
 
 const THEMES = [
-  { id: 'dark',   label: '🌙 Escuro' },
-  { id: 'light',  label: '☀️ Claro' },
-  { id: 'system', label: '⚙️ Sistema' }
+  { id: 'dark',       label: '🌙 Escuro' },
+  { id: 'light',      label: '☀️ Claro' },
+  { id: 'cyber',      label: '⚡ Cyber' },
+  { id: 'aurora',     label: '🌌 Aurora Boreal' },
+  { id: 'vaporwave',  label: '🌆 Vaporwave' },
+  { id: 'mono',       label: '⚪ Monocromático' },
+  { id: 'system',     label: '⚙️ Sistema' }
 ];
 
 const FX_LEVELS = [
@@ -66,6 +79,8 @@ function _render() {
   view.appendChild(_buildAccentSection());
   view.appendChild(_buildFxSection());
   view.appendChild(_buildGamificationAndNotificationsSection());
+  view.appendChild(_buildIntelligenceAndAiSection());
+  view.appendChild(_buildSyncSection());
   view.appendChild(_buildDataSection());
   view.appendChild(_buildDangerSection());
 
@@ -297,6 +312,314 @@ function _buildGamificationAndNotificationsSection() {
 }
 
 // ─────────────────────────────────────────────
+// SEÇÃO: INTELIGÊNCIA, DETECTOR DE ABANDONO & RESUMO COM IA OPCIONAL (FASE 5)
+// ─────────────────────────────────────────────
+function _buildIntelligenceAndAiSection() {
+  const section = _buildSection(
+    'Inteligência, Detector de Abandono & Resumo com IA (Opcional)',
+    'Ajuste os prazos do detector de abandono (que nunca altera status sozinho) e configure o Resumo com IA opcional (desligado por padrão, com allowlist estrita e chave mantida apenas neste aparelho).'
+  );
+  const state = getState();
+  const cfg = state.config || {};
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:14px;';
+
+  // 1. Configuração do Detector de Abandono
+  const abandBox = document.createElement('div');
+  abandBox.style.cssText = 'padding:14px;background:var(--bg-surface);border-radius:var(--radius-md);border:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:10px;';
+  abandBox.innerHTML = `
+    <div>
+      <div style="font-size:var(--text-sm);font-weight:700;color:var(--text-main);">🕸️ Detector de Abandono</div>
+      <div style="font-size:var(--text-xs);color:var(--text-muted);margin-top:2px;">
+        Sugere retomar, pausar, arquivar, adiar ou marcar como estável quando um projeto ativo fica sem atividade pelo período configurado. Nunca muda o status automaticamente.
+      </div>
+    </div>
+  `;
+
+  const inputsRow = document.createElement('div');
+  inputsRow.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;';
+
+  const threshGroup = document.createElement('div');
+  threshGroup.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+  threshGroup.innerHTML = `<label style="font-size:var(--text-xs);color:var(--text-secondary);">Dias sem atividade para sugerir ação (7–365):</label>`;
+  const threshInput = document.createElement('input');
+  threshInput.type = 'number';
+  threshInput.min = '7';
+  threshInput.max = '365';
+  threshInput.className = 'input';
+  threshInput.style.width = '110px';
+  threshInput.value = String(cfg.abandonmentThresholdDays || 45);
+  threshGroup.appendChild(threshInput);
+
+  const coolGroup = document.createElement('div');
+  coolGroup.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+  coolGroup.innerHTML = `<label style="font-size:var(--text-xs);color:var(--text-secondary);">Dias de cooldown ao adiar alerta (1–90):</label>`;
+  const coolInput = document.createElement('input');
+  coolInput.type = 'number';
+  coolInput.min = '1';
+  coolInput.max = '90';
+  coolInput.className = 'input';
+  coolInput.style.width = '110px';
+  coolInput.value = String(cfg.abandonmentCooldownDays || 14);
+  coolGroup.appendChild(coolInput);
+
+  const saveAbandBtn = document.createElement('button');
+  saveAbandBtn.type = 'button';
+  saveAbandBtn.className = 'btn btn-secondary btn-sm';
+  saveAbandBtn.textContent = 'Salvar prazos';
+  saveAbandBtn.addEventListener('click', () => {
+    const tDays = Math.max(7, Math.min(365, parseInt(threshInput.value, 10) || 45));
+    const cDays = Math.max(1, Math.min(90, parseInt(coolInput.value, 10) || 14));
+    dispatch({
+      type: 'CONFIG_UPDATE',
+      payload: {
+        abandonmentThresholdDays: tDays,
+        abandonmentCooldownDays: cDays
+      }
+    });
+    showToast(`Detector de abandono ajustado (${tDays}d inatividade · ${cDays}d cooldown).`, { type: 'success' });
+    _render();
+  });
+
+  inputsRow.appendChild(threshGroup);
+  inputsRow.appendChild(coolGroup);
+  inputsRow.appendChild(saveAbandBtn);
+  abandBox.appendChild(inputsRow);
+
+  // Projetos marcados como estáveis ou ignorados
+  const exemptOrIgnored = Object.entries(state.projects || {}).filter(
+    ([, p]) => p && (p.exemptFromAbandonment || p.abandonmentIgnored)
+  );
+  if (exemptOrIgnored.length > 0) {
+    const exList = document.createElement('div');
+    exList.style.cssText = 'font-size:var(--text-xs);color:var(--text-secondary);padding-top:8px;border-top:1px solid var(--border-subtle);display:flex;flex-wrap:wrap;gap:6px;align-items:center;';
+    exList.innerHTML = `<span>Projetos isentos/ignorados (${exemptOrIgnored.length}):</span>`;
+    exemptOrIgnored.forEach(([repoId, proj]) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'btn btn-ghost btn-sm';
+      chip.style.cssText = 'font-size:11px;padding:2px 8px;min-height:24px;';
+      chip.textContent = `${proj.customName || proj.name || repoId} (${proj.exemptFromAbandonment ? 'Estável' : 'Ignorado'}) ×`;
+      chip.title = 'Clique para reativar alertas de abandono neste projeto';
+      chip.addEventListener('click', () => {
+        dispatch({
+          type: 'PROJECT_ABANDONMENT_SET',
+          payload: { repoId, exemptFromAbandonment: false, abandonmentIgnored: false, abandonmentSnoozedUntil: null }
+        });
+        showToast('Monitoramento de atividade reativado para o projeto.', { type: 'info' });
+        _render();
+      });
+      exList.appendChild(chip);
+    });
+    abandBox.appendChild(exList);
+  }
+
+  wrap.appendChild(abandBox);
+
+  // 2. Resumo com IA (Opcional — Desligado por Padrão)
+  const aiBox = document.createElement('div');
+  aiBox.style.cssText = 'padding:14px;background:var(--bg-surface);border-radius:var(--radius-md);border:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:10px;';
+
+  const hasSavedKey = Boolean(getStoredAiApiKey());
+  const aiActive = Boolean(cfg.aiEnabled && cfg.aiConsentGiven);
+
+  aiBox.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:var(--text-sm);font-weight:700;color:var(--text-main);">🤖 Resumo Técnico com IA (Opcional · Desligado por Padrão)</div>
+        <div style="font-size:var(--text-xs);color:var(--text-muted);margin-top:2px;">
+          Requer opt-in explícito. Antes de qualquer envio na página do projeto, você vê exatamente quais dados (JSON) e para qual provedor serão enviados. Notas privadas, tarefas pessoais e tokens <strong>nunca</strong> saem do aparelho.
+        </div>
+      </div>
+      <span class="badge" style="background:${aiActive ? 'rgba(16,185,129,0.14)' : 'rgba(100,116,139,0.16)'};color:${aiActive ? '#34d399' : 'var(--text-muted)'};border:1px solid var(--border-subtle);">
+        ${aiActive ? 'Consentimento Ativo' : 'Desativado'}
+      </span>
+    </div>
+    <div style="padding:8px 10px;border-radius:var(--radius-sm);background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);font-size:11px;color:var(--text-secondary);">
+      🔒 <strong>Segurança da Chave:</strong> a chave é salva apenas localmente neste navegador (fora dos backups JSON exportados). Ainda assim, qualquer chave no navegador pode ser extraída por extensões ou scripts locais — para uso frequente ou compartilhado, prefira um backend/proxy próprio.
+    </div>
+  `;
+
+  const providerRow = document.createElement('div');
+  providerRow.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;';
+
+  const provSelectGroup = document.createElement('div');
+  provSelectGroup.innerHTML = `<label style="font-size:var(--text-xs);color:var(--text-secondary);display:block;margin-bottom:4px;">Provedor:</label>`;
+  const provSelect = document.createElement('select');
+  provSelect.className = 'select';
+  [
+    { id: 'gemini', label: 'Google Gemini API' },
+    { id: 'openai', label: 'OpenAI Compatible API' },
+    { id: 'custom', label: 'Endpoint Proxy / Customizado' }
+  ].forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.label;
+    opt.selected = (cfg.aiProvider || 'gemini') === p.id;
+    provSelect.appendChild(opt);
+  });
+  provSelectGroup.appendChild(provSelect);
+
+  const modelGroup = document.createElement('div');
+  modelGroup.innerHTML = `<label style="font-size:var(--text-xs);color:var(--text-secondary);display:block;margin-bottom:4px;">Modelo:</label>`;
+  const modelInput = document.createElement('input');
+  modelInput.type = 'text';
+  modelInput.className = 'input';
+  modelInput.placeholder = 'Ex.: gemini-2.5-flash ou gpt-4o-mini';
+  modelInput.value = cfg.aiModel || 'gemini-2.5-flash';
+  modelGroup.appendChild(modelInput);
+
+  const keyGroup = document.createElement('div');
+  keyGroup.innerHTML = `<label style="font-size:var(--text-xs);color:var(--text-secondary);display:block;margin-bottom:4px;">Chave da API (${hasSavedKey ? '✅ salva no aparelho' : 'não configurada'}):</label>`;
+  const keyInput = document.createElement('input');
+  keyInput.type = 'password';
+  keyInput.className = 'input';
+  keyInput.placeholder = hasSavedKey ? '•••••••••••• (digite para substituir)' : 'Cole sua API Key opcional…';
+  keyGroup.appendChild(keyInput);
+
+  providerRow.appendChild(provSelectGroup);
+  providerRow.appendChild(modelGroup);
+  providerRow.appendChild(keyGroup);
+  aiBox.appendChild(providerRow);
+
+  const aiBtnsRow = document.createElement('div');
+  aiBtnsRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px;';
+
+  const saveAiBtn = document.createElement('button');
+  saveAiBtn.type = 'button';
+  saveAiBtn.className = 'btn btn-primary btn-sm';
+  saveAiBtn.textContent = aiActive ? '💾 Salvar configurações de IA' : '✅ Ativar Opt-in & Salvar IA';
+  saveAiBtn.addEventListener('click', () => {
+    const typedKey = keyInput.value.trim();
+    if (typedKey) setStoredAiApiKey(typedKey);
+    dispatch({
+      type: 'CONFIG_UPDATE',
+      payload: {
+        aiEnabled: true,
+        aiConsentGiven: true,
+        aiConsentAt: cfg.aiConsentAt || new Date().toISOString(),
+        aiProvider: provSelect.value,
+        aiModel: modelInput.value.trim() || 'gemini-2.5-flash'
+      }
+    });
+    showToast('Configurações de IA e consentimento salvos neste aparelho.', { type: 'success' });
+    _render();
+  });
+  aiBtnsRow.appendChild(saveAiBtn);
+
+  if (aiActive || hasSavedKey) {
+    const revokeBtn = document.createElement('button');
+    revokeBtn.type = 'button';
+    revokeBtn.className = 'btn btn-danger btn-sm';
+    revokeBtn.textContent = '🚫 Revogar Consentimento & Apagar Chave';
+    revokeBtn.addEventListener('click', () => {
+      revokeAiConsent({ dispatch, deleteKey: true });
+      showToast('Consentimento de IA revogado e chave removida do navegador.', { type: 'warning', duration: 3500 });
+      _render();
+    });
+    aiBtnsRow.appendChild(revokeBtn);
+  }
+
+  aiBox.appendChild(aiBtnsRow);
+  wrap.appendChild(aiBox);
+
+  section.appendChild(wrap);
+  return section;
+}
+
+// ─────────────────────────────────────────────
+// SEÇÃO: SINCRONIZAÇÃO EM NUVEM (GIST PRIVADO)
+// ─────────────────────────────────────────────
+function _buildSyncSection() {
+  const section = _buildSection('Sincronização em Nuvem (Gist Privado)', 'Opcional e desligada por padrão. Sincronize dados estruturados entre dispositivos via Gist privado na sua conta do GitHub.');
+  const state = getState();
+  const cfg = state.config || {};
+  const isSyncEnabled = Boolean(cfg.syncEnabled);
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:12px;';
+
+  const notice = document.createElement('div');
+  notice.style.cssText = 'font-size:var(--text-xs);color:var(--text-secondary);background:rgba(139,92,246,0.06);padding:10px 12px;border-radius:var(--radius-sm);border:1px solid rgba(139,92,246,0.2);line-height:1.5;';
+  notice.innerHTML = `
+    <strong>🔐 Privacidade & Segurança de Sincronização:</strong>
+    Apenas dados de projetos, tarefas, status e foco são sincronizados.
+    <strong>Tokens de API e credenciais NUNCA são enviados para o Gist.</strong>
+    Os conflitos são resolvidos por registro (com controle de data e tombstones), sem sobrescrita cega.
+  `;
+  wrap.appendChild(notice);
+
+  const statusRow = document.createElement('div');
+  statusRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 12px;background:var(--bg-surface);border-radius:var(--radius-sm);border:1px solid var(--border-subtle);font-size:var(--text-xs);';
+  statusRow.innerHTML = `
+    <span>Status: <strong>${isSyncEnabled ? '✅ Sincronização Ativa' : 'Desativada'}</strong></span>
+    <span>Último sync: <strong>${cfg.lastSyncedAt ? new Date(cfg.lastSyncedAt).toLocaleString('pt-BR') : 'Nunca'}</strong></span>
+  `;
+  wrap.appendChild(statusRow);
+
+  const tokenInputWrap = document.createElement('div');
+  tokenInputWrap.innerHTML = `
+    <label style="display:block;font-size:var(--text-xs);font-weight:700;margin-bottom:4px;color:var(--text-main);">
+      Token GitHub para Gist (Personal Access Token com escopo 'gist'):
+    </label>
+    <input type="password" id="sync-token-input" class="search-input" style="width:100%;font-size:var(--text-xs);" placeholder="ghp_..." value="${cfg.githubToken || ''}">
+  `;
+  wrap.appendChild(tokenInputWrap);
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;';
+
+  const syncBtn = document.createElement('button');
+  syncBtn.type = 'button';
+  syncBtn.className = 'btn btn-primary btn-sm';
+  syncBtn.innerHTML = '🔄 Sincronizar Agora com Gist';
+  syncBtn.addEventListener('click', async () => {
+    const inputToken = tokenInputWrap.querySelector('#sync-token-input')?.value?.trim();
+    const token = inputToken || cfg.githubToken || '';
+    if (!token) {
+      showToast('Token do GitHub com escopo "gist" necessário.', { type: 'warning', duration: 4000 });
+      return;
+    }
+    syncBtn.disabled = true;
+    syncBtn.innerHTML = 'Sincronizando...';
+    try {
+      const res = await executeGistSync({ token, gistId: cfg.syncGistId });
+      if (res.ok) {
+        showToast(res.hasConflicts ? `Sincronizado com ${res.conflicts.length} conflito(s) resolvido(s)!` : 'Sincronização concluída com sucesso!', { type: 'success' });
+        dispatch({ type: 'CONFIG_UPDATE', payload: { syncEnabled: true, githubToken: token } });
+        _render();
+      } else {
+        showToast(`Erro na sincronização: ${res.error}`, { type: 'danger', duration: 6000 });
+      }
+    } catch (e) {
+      showToast(`Falha de sincronização: ${e.message}`, { type: 'danger' });
+    } finally {
+      syncBtn.disabled = false;
+      syncBtn.innerHTML = '🔄 Sincronizar Agora com Gist';
+    }
+  });
+  btnRow.appendChild(syncBtn);
+
+  if (isSyncEnabled) {
+    const disableBtn = document.createElement('button');
+    disableBtn.type = 'button';
+    disableBtn.className = 'btn btn-secondary btn-sm';
+    disableBtn.textContent = 'Desativar Sincronização';
+    disableBtn.addEventListener('click', () => {
+      dispatch({ type: 'CONFIG_UPDATE', payload: { syncEnabled: false, syncGistId: null } });
+      showToast('Sincronização desligada neste dispositivo.', { type: 'info' });
+      _render();
+    });
+    btnRow.appendChild(disableBtn);
+  }
+
+  wrap.appendChild(btnRow);
+  section.appendChild(wrap);
+  return section;
+}
+
+// ─────────────────────────────────────────────
 // SEÇÃO: EXPORTAR / IMPORTAR
 // ─────────────────────────────────────────────
 function _buildDataSection() {
@@ -396,8 +719,16 @@ function _buildDataSection() {
 
   importBtn.addEventListener('click', () => fileInput.click());
 
+  const tourBtn = document.createElement('button');
+  tourBtn.className = 'btn btn-secondary';
+  tourBtn.innerHTML = `🚀 Tour de Apresentação`;
+  tourBtn.addEventListener('click', () => {
+    startOnboardingTour(true);
+  });
+
   btnGroup.appendChild(exportBtn);
   btnGroup.appendChild(importBtn);
+  btnGroup.appendChild(tourBtn);
   btnGroup.appendChild(fileInput);
   section.appendChild(btnGroup);
 
@@ -417,7 +748,8 @@ function _buildDataSection() {
   clearCacheBtn.style.flexShrink = '0';
   clearCacheBtn.addEventListener('click', () => {
     const currentState = getState();
-    const clearedState = clearGitHubCache(currentState);
+    clearGitHubCache(currentState);
+    clearRepoActivityMemoryCache();
     dispatch({ type: 'GITHUB_CACHE_UPDATE', payload: { repos: [], fetchedAt: null, rateLimit: null } });
     showToast('Cache do GitHub limpo. Recarregue a Home para buscar novamente.', { type: 'success', duration: 4000 });
   });
@@ -481,6 +813,28 @@ function _buildDangerSection() {
       }
     });
   });
+
+  const credsCard = document.createElement('div');
+  credsCard.style.cssText = 'padding:14px 16px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;';
+  credsCard.innerHTML = `
+    <div>
+      <div style="font-size:var(--text-sm);font-weight:700;color:var(--text-main);margin-bottom:2px;">Remover credenciais e chaves do aparelho</div>
+      <div style="font-size:var(--text-xs);color:var(--text-muted);">Remove seu token do GitHub, chave de API de IA e token de sincronização. Seus projetos e tarefas continuam intactos.</div>
+    </div>
+  `;
+  const removeCredsBtn = document.createElement('button');
+  removeCredsBtn.className = 'btn btn-secondary btn-sm';
+  removeCredsBtn.textContent = '🔒 Remover Chaves';
+  removeCredsBtn.addEventListener('click', () => {
+    dispatch({ type: 'CONFIG_UPDATE', payload: { githubToken: '', syncEnabled: false, syncGistId: null } });
+    clearStoredAiApiKey();
+    revokeAiConsent({ deleteKey: true });
+    localStorage.removeItem('panel_sync_token');
+    showToast('Tokens do GitHub e chaves de IA removidos deste aparelho.', { type: 'success' });
+    _render();
+  });
+  credsCard.appendChild(removeCredsBtn);
+  section.appendChild(credsCard);
 
   dangerCard.appendChild(info);
   dangerCard.appendChild(deleteBtn);

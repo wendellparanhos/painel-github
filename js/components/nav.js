@@ -26,6 +26,11 @@ const NAV_ITEMS = [
     icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M9 3h6"/></svg>`
   },
   {
+    hash: '#/reports',
+    label: 'Relatórios',
+    icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`
+  },
+  {
     hash: '#/galaxy',
     label: 'Galáxia',
     icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(30 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-30 12 12)"/></svg>`
@@ -137,10 +142,22 @@ export function renderNav(appRoot) {
   rateLimitEl.id = 'rate-limit-indicator';
   rateLimitEl.style.display = 'none';
 
+  const networkEl = document.createElement('div');
+  networkEl.id = 'network-status-indicator';
+  networkEl.style.display = (typeof navigator !== 'undefined' && navigator.onLine === false) ? 'inline-flex' : 'none';
+  networkEl.innerHTML = `
+    <span style="font-size:11px;font-weight:700;color:#f87171;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);padding:2px 8px;border-radius:12px;display:inline-flex;align-items:center;gap:4px;" title="Modo offline ativo. Dados locais continuam acessíveis e editáveis.">
+      <span style="width:6px;height:6px;border-radius:50%;background:#ef4444;"></span> Offline
+    </span>
+  `;
+  window.addEventListener('online', () => { networkEl.style.display = 'none'; });
+  window.addEventListener('offline', () => { networkEl.style.display = 'inline-flex'; });
+
   headerActions.appendChild(_gamificationPill);
   headerActions.appendChild(paletteBtn);
   headerActions.appendChild(helpBtn);
   headerActions.appendChild(rateLimitEl);
+  headerActions.appendChild(networkEl);
 
   container.appendChild(brand);
   container.appendChild(desktopNav);
@@ -254,8 +271,8 @@ function _updateActiveLinks() {
     const dockItems = _dock.querySelectorAll('.dock-item');
     dockItems.forEach(item => {
       const isActive = currentHash.startsWith(item.getAttribute('href'));
-      dockItem.classList.toggle('is-active', isActive);
-      dockItem.setAttribute('aria-current', isActive ? 'page' : 'false');
+      item.classList.toggle('is-active', isActive);
+      item.setAttribute('aria-current', isActive ? 'page' : 'false');
     });
   }
 }
