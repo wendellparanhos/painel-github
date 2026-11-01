@@ -13,23 +13,6 @@ O **Painel GitHub** é uma aplicação web progressiva (*Progressive Web App - P
 
 ---
 
-## 🌐 Demonstração Online (Deploy no GitHub Pages)
-
-O projeto está pronto para publicação e hospedagem estática direta no **GitHub Pages**:
-
-👉 **[wendellparanhos.github.io/painel-github](https://wendellparanhos.github.io/painel-github/)**
-
-### Como Habilitar no Repositório do GitHub:
-1. Acesse o repositório no GitHub: `https://github.com/wendellparanhos/painel-github`
-2. Clique na aba **Settings** ⚙️
-3. No menu lateral esquerdo, clique em **Pages**
-4. Na seção **Build and deployment > Source**, selecione:
-   - **Branch:** `main`
-   - **Folder:** `/ (root)`
-5. Clique em **Save**. O GitHub Pages estará ativo em instantes!
-
----
-
 ## ✨ Destaques do Projeto
 
 - **🎯 Gestão Completa de Projetos e Tarefas:** Sincroniza automaticamente seus repositórios públicos do GitHub (`wendellparanhos`) e permite enriquecê-los com status pessoais (`ideia`, `em andamento`, `pausado`, `concluído`, `arquivado`), tarefas com prioridade, prazos locais, subtarefas, recorrência automática (`diária`, `semanal`, `mensal`), notas em Markdown e linha do tempo de marcos.
